@@ -1,9 +1,9 @@
 //
 // Simple chat client for TSAM-409
 //
-// Command line: ./chat_client 4000 
+// Command line: ./client <ip> <portnumber> 
 //
-// Author: Jacky Mallett (jacky@ru.is)
+// Author: Jacky Mallett (jacky@ru.is), Thor Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
 //
 #include <stdio.h>
 #include <errno.h>
@@ -67,12 +67,11 @@ int main(int argc, char* argv[])
         printf("Ctrl-C to terminate\n");
         exit(0);
    }
-
+   memset(&hints, 0, sizeof(hints));
    hints.ai_family   = AF_INET;            // IPv4 only addresses
    hints.ai_socktype = SOCK_STREAM;
    hints.ai_flags    = AI_PASSIVE;
 
-   memset(&hints,   0, sizeof(hints));
 
    if(getaddrinfo(argv[1], argv[2], &hints, &svr) != 0)
    {
