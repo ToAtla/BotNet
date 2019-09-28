@@ -26,6 +26,12 @@
 #include <thread>
 #include <map>
 
+// fix SOCK_NONBLOCK for OSX
+#ifndef SOCK_NONBLOCK
+#include <fcntl.h>
+#define SOCK_NONBLOCK O_NONBLOCK
+#endif
+
 #define BACKLOG  5          // Allowed length of queue of waiting connections
 
 // Simple class for handling connections from clients.
