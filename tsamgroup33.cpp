@@ -15,15 +15,37 @@
 #include <signal.h>
 #include <iostream>
 #include <string>
+
 #define BACKLOG 5  // how many pending connections queue will hold
 #define CLIENTBUFFERSIZE 1025
 int VERBOSE = 1;
+std::string CLIENT_PREFIX = "CLI::";
 
 void fatal(std::string message){
     std::cout << message << std::endl;
     exit(0);
 }
 
+int discern_command(std::string command){
+    
+    bool is_server_command = command.rfind(CLIENT_PREFIX, 0);
+    // To seperate client and server commands
+    // we assume that client commands are prefixed with a clistring
+    if(VERBOSE){
+        if(is_server_command){
+            std::cout << "Server command recieved" << std::endl;
+        }else{
+            std::cout << "Client command received" << std::endl;
+        }
+    }
+    //TODO, do stuff with command
+        
+    return 0;
+}
+
+/*
+*   Sends a message through the given socket
+*/
 int reply_through_socket(int communicationSocket, std::string message){
     if( send(communicationSocket, message.c_str(), message.size(), 0) < 0){
         fatal("Replying failed");
@@ -35,7 +57,7 @@ int reply_through_socket(int communicationSocket, std::string message){
 * Opens a communication socket and returns it 
 * The socket needs to be closed by the calling process
 */
-int accept_commands(const int listeningSocket, int &communicationSocket, char *buffer){
+int accept_command(const int listeningSocket, int &communicationSocket, char *buffer){
 
     struct sockaddr_storage their_addr; // connector's address information
     socklen_t sin_size;
@@ -58,7 +80,9 @@ int accept_commands(const int listeningSocket, int &communicationSocket, char *b
     }
     return 0;
 }
-
+/*
+*   Sets up a listening socket to listen to client and server commands
+*/
 int establish_server(char *port, int &listeningSocket){
     struct addrinfo hints, *servinfo, *p;
     int yes=1;
@@ -126,8 +150,8 @@ int run_server(char *port){
     char buffer[CLIENTBUFFERSIZE];
     memset(buffer, 0, sizeof(buffer));
 
-    accept_commands(listeningSocket, communicationSocket, buffer);
-    
+    accept_command(listeningSocket, communicationSocket, buffer);
+    discern_command(buffer);
     reply_through_socket(communicationSocket, "Got your command");
     close(communicationSocket);
     // --------------------Threading section ends
