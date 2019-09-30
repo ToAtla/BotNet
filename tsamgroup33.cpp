@@ -14,33 +14,48 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <iostream>
-
+#include <string>
 #define BACKLOG 5  // how many pending connections queue will hold
 #define CLIENTBUFFERSIZE 1025
+int VERBOSE = 1;
 
+void fatal(std::string message){
+    std::cout << message << std::endl;
+    exit(0);
+}
 
-int accept_commands(int listeningSocket){
+int reply_through_socket(int communicationSocket, std::string message){
+    if( send(communicationSocket, message.c_str(), message.size(), 0) < 0){
+        fatal("Replying failed");
+    }
+    return 0;
+}
+/*
+* Accepts a socket as a parameter
+* Opens a communication socket and returns it 
+* The socket needs to be closed by the calling process
+*/
+int accept_commands(const int listeningSocket, int &communicationSocket, char *buffer){
 
-    int new_fd;
     struct sockaddr_storage their_addr; // connector's address information
     socklen_t sin_size;
     sin_size = sizeof their_addr;
-    char buffer[CLIENTBUFFERSIZE];
-    memset(buffer, 0, sizeof(buffer));
+    
     printf("Accepting\n");
     
-    new_fd = accept(listeningSocket, (struct sockaddr *)&their_addr, &sin_size);
-    if (new_fd == -1)
+    communicationSocket = accept(listeningSocket, (struct sockaddr *)&their_addr, &sin_size);
+    if (communicationSocket == -1)
     {
         printf("accept");
     }
     printf("Accepted\n");
     
-    int n = recv(new_fd, buffer, CLIENTBUFFERSIZE, 0);
-    printf("%i bytes recieved\n", n);
+    int n = recv(communicationSocket, buffer, CLIENTBUFFERSIZE, 0);
     buffer[CLIENTBUFFERSIZE - 1] = '\0';
-    printf("%s\n", buffer);
-    close(new_fd); // parent doesn't need this
+    if(VERBOSE){
+        printf("%i bytes recieved\n", n);
+        printf("%s\n", buffer);
+    }
     return 0;
 }
 
@@ -105,14 +120,24 @@ int establish_server(char *port, int &listeningSocket){
 int run_server(char *port){
     int listeningSocket;
     establish_server(port, listeningSocket);
-    accept_commands(listeningSocket);
-    //reply_to_command();
+
+    // --------------------The following bit can be threaded
+    int communicationSocket;
+    char buffer[CLIENTBUFFERSIZE];
+    memset(buffer, 0, sizeof(buffer));
+
+    accept_commands(listeningSocket, communicationSocket, buffer);
+    
+    reply_through_socket(communicationSocket, "Got your command");
+    close(communicationSocket);
+    // --------------------Threading section ends
     return 0;
 }
 
 
 int main(int argc, char* argv[])
 {
+    VERBOSE = 1;
     if(argc != 2){
         std::cout << "Usage: ./serverfile <portnumber>" << std::endl;
     }
