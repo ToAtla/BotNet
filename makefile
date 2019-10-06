@@ -11,4 +11,4 @@ runclienthardcoded:
 cli: clean build runclienthardcoded
 
 doddi:
-	g++ -Wall -std=c++11 doddi_server.cpp -o doddi_server && g++ -Wall -std=c++11 client_org.cpp -o client
+	g++ -Wall -std=c++11 doddi_server.cpp -o doddi_server && g++ -Wall -std=c++11 doddi_client.cpp -o client
