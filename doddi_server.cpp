@@ -33,22 +33,37 @@ using namespace std;
 
 string OUR_GROUP_ID = "P3_GROUP_75";
 
-int establish_server(char *port)
+class Botnet_server
 {
-    int listeningSocket;
+public:
+    int sock; // socket of server connection
+    string group_id;
+
+    Botnet_server(int socket) : sock(socket) {}
+    Botnet_server(int socket, string group_id)
+    {
+        this->sock = socket;
+        this->group_id = group_id;
+    }
+
+    ~Botnet_server() {} // Virtual destructor defined for base class
+};
+
+void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &open_sockets)
+{
     struct addrinfo hints, *servinfo, *p;
     int yes = 1;
     int rv;
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC; // TODO: should this be unspecified?
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE; // use my IP
 
-    if ((rv = getaddrinfo(NULL, port, &hints, &servinfo)) != 0) // TODO: what does this do?
+    if ((rv = getaddrinfo(NULL, port, &hints, &servinfo)) != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        return 1;
+        exit(1);
     }
 
     // loop through all the results and bind to the first we can
@@ -81,21 +96,37 @@ int establish_server(char *port)
         exit(1);
     }
 
-    return listeningSocket;
+    if (listen(listeningSocket, BACKLOG) < 0)
+    {
+        printf("Listen failed on port %s\n", port);
+        exit(0);
+    }
+
+    FD_SET(listeningSocket, &open_sockets);
+
+    maxfds = listeningSocket;
+    printf("Listening on port: %s\n", port);
 }
 
-int wait_for_client_connection(int listeningSocket)
+void wait_for_client_connection(int listeningSocket, int &clientSocket, int &maxfds, fd_set &open_sockets)
 {
     struct sockaddr_storage client_addr; // connector's address information
     socklen_t sin_size;
     sin_size = sizeof(client_addr);
-    int clientSocket;
 
     printf("Waiting for client to connect\n");
 
     clientSocket = accept(listeningSocket, (struct sockaddr *)&client_addr, &sin_size);
+    if (clientSocket < 0)
+    {
+        printf("failed to accept from client\n");
+        exit(0);
+    }
 
-    return clientSocket;
+    maxfds = max(maxfds, clientSocket);
+    FD_SET(clientSocket, &open_sockets);
+
+    printf("client connected successfully\n");
 }
 
 /*
@@ -105,6 +136,8 @@ int wait_for_client_connection(int listeningSocket)
 */
 int client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 {
+    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>\n");
+
     char server_connect_command[BUFFERSIZE];
     memset(server_connect_command, 0, BUFFERSIZE);
     // while we dont have a valid connection command
@@ -141,8 +174,9 @@ int client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 
 /*
 * connects to server and returns socket file descriptor
+* incrament botner-server connection count
 */
-int connect_to_botnet_server(string botnet_ip, int botnet_port)
+int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
 {
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd < 0)
@@ -164,40 +198,122 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port)
         return (-1);
     }
 
-    // testing send to server
-    string message = "";
-    char SOH = 1;
-    char EOT = 1;
-    message = SOH + "LISTSERVERS," + OUR_GROUP_ID + EOT;
+    botnet_servers[socketfd] = new Botnet_server(socketfd);
 
-    send(socketfd, message.c_str(), message.length(), 0);
-
-    char response[5000];
-    int byteCount = recv(socketfd, response, 5000, 0);
-
-    response[byteCount] = '\0';
-    cout << response << endl;
-
-    return socketfd;
+    maxfds = max(maxfds, socketfd);
+    FD_SET(socketfd, &open_sockets);
 }
 
-int new_connections()
+/*
+* Accepts incoming connection.
+* Adds socket to botnet_server map
+*/
+void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers)
 {
+    struct sockaddr_in server_addr;
+    socklen_t server_addr_len;
+
+    int server_socket = accept(listenSocket, (struct sockaddr *)&server_addr,
+                               &server_addr_len);
+
+    if (server_socket < 0)
+    {
+        perror("error in accepting new connection\n");
+    }
+    else
+    {
+        FD_SET(server_socket, &open_sockets);
+
+        botnet_servers[server_socket] = new Botnet_server(server_socket);
+
+        // And update the maximum file descriptor
+        maxfds = max(maxfds, server_socket);
+        printf("botnet-server connected on server: %d\n", server_socket);
+    }
 }
 
-int check_for_server_commands()
+// Close a botnet server's connection, remove it from the botnet_server list, and
+// tidy up select sockets afterwards.
+
+void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers, int &maxfds)
 {
+    // Remove server from the botnet server list
+    botnet_servers.erase(botnet_server_sock);
+
+    // If this botnet-server's socket is maxfds then the next lowest
+    // one has to be determined. Socket fd's can be reused by the Kernel,
+    // so there aren't any nice ways to do this.
+
+    if (maxfds == botnet_server_sock)
+    {
+        for (auto const &p : botnet_servers)
+        {
+            maxfds = max(maxfds, p.second->sock);
+        }
+    }
+
+    // And remove from the list of open sockets.
+    FD_CLR(botnet_server_sock, &open_sockets);
 }
 
-int check_for_client_commands()
+int server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
+    for (auto const &pair : botnet_servers)
+    {
+        Botnet_server *botnet_server = pair.second;
+
+        if (FD_ISSET(botnet_server->sock, &read_sockets))
+        {
+            char buffer[BUFFERSIZE];
+            memset(buffer, 0, BUFFERSIZE);
+
+            // recv() == 0 means client has closed connection
+            if (recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+            {
+                printf("Botnet server closed connection: %d", botnet_server->sock);
+                close(botnet_server->sock);
+
+                close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+            }
+            // We don't check for -1 (nothing received) because select()
+            // only triggers if there is something on the socket for us.
+            else
+            {
+                cout << buffer << endl;
+            }
+        }
+    }
+}
+
+int client_commands(int& clientSocket)
+{
+    char buffer[BUFFERSIZE];
+    memset(buffer, 0, BUFFERSIZE);
+
+    // recv() == 0 means client has closed connection
+    if (recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+    {
+        printf("Client closed connection: %d", clientSocket);
+        close(clientSocket);
+        clientSocket = -1;
+    }
+    // We don't check for -1 (nothing received) because select()
+    // only triggers if there is something on the socket for us.
+    else
+    {
+        cout << buffer << endl;
+    }
 }
 
 int main(int argc, char *argv[])
 {
-    int listenSocket;      // Socket for connections to server
-    int clientSock;        // Socket of connecting client
-    fd_set botnet_servers; // connected botnet servers
+    int listenSocket;                         // Socket for connections to server
+    int clientSock;                           // Socket of connecting client
+    fd_set open_sockets;                      // Current open sockets
+    fd_set read_sockets;                      // Exception socket list
+    fd_set except_sockets;                    // Exception socket list
+    int maxfds;                               // Passed to select() as max fd in set
+    map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information
 
     if (argc != 2)
     {
@@ -205,48 +321,55 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    // Setup socket for server to listen to
+    // Setup socket for server to listen to connections
     char *port = argv[1];
-    listenSocket = establish_server(port);
-    // TODO: fallegra ef þetta er partur af establish_server?:
-    if (listen(listenSocket, BACKLOG) < 0)
-    {
-        printf("Listen failed on port %s\n", port);
-        exit(0);
-    }
+    // establish listening socket, initalize maxfds, add to open_sockets
+    establish_server(port, listenSocket, maxfds, open_sockets);
 
-    printf("Listening on port: %s\n", port);
-
-    // wait for the client to connect to the server
-    clientSock = wait_for_client_connection(listenSocket);
-    // TODO: fallegra ef þetta er partur af wait_for_client_connection?:
-    if (clientSock < 0)
-    {
-        printf("failed to accept from client\n");
-        exit(0);
-    }
-
-    printf("client connected successfully\n");
-    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>\n");
+    // wait for the client to connect to the server, set clientSock, maybe change maxfds, add to open_sockets
+    wait_for_client_connection(listenSocket, clientSock, maxfds, open_sockets);
 
     // get ip and port of first server to connect to
     string botnet_server_ip;
     int botnet_server_port;
     client_botnet_connect_cmd(clientSock, botnet_server_ip, botnet_server_port);
 
-    // connect to botnet
-    int server_socket = connect_to_botnet_server(botnet_server_ip, botnet_server_port);
-    FD_SET(server_socket, &botnet_servers);
+    // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
+    connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets);
 
     while (true)
     {
-        // check for new connections
-        new_connections();
+        // Get modifiable copy of readSockets
+        read_sockets = except_sockets = open_sockets;
 
-        // check for commands from connected servers
-        check_for_server_commands();
+        // Look at sockets and see which ones have something to be read()
+        int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, NULL);
 
-        // check for commands from client
-        check_for_client_commands();
+        if (n < 0)
+        {
+            perror("select failed - closing down\n");
+            break;
+        }
+
+        // if there is an incoming connection and we have room for more connections.
+        if (FD_ISSET(listenSocket, &read_sockets) && botnet_servers.size < 5)
+        {
+            // accepts connection, maybe changes maxfds, add to botnet_servers
+            new_connections(listenSocket, maxfds, open_sockets, botnet_servers);
+            n--;
+        }
+
+        if (FD_ISSET(clientSock, &read_sockets))
+        {
+            // check for commands from client
+            client_commands(clientSock);
+            n--;
+        }
+
+        while (n-- > 0)
+        {
+            // check for commands from connected servers
+            server_commands(botnet_servers, open_sockets, read_sockets, maxfds);
+        }
     }
 }
