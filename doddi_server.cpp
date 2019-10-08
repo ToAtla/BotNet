@@ -134,7 +134,7 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 * waits for client to send a valid CONNECTTO,<ip>,<port> command
 * extracts the ip and port and returns it via output parameters.
 */
-int client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
+void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 {
     printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>\n");
 
@@ -176,13 +176,13 @@ int client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 * connects to server and returns socket file descriptor
 * incrament botner-server connection count
 */
-int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
+void connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
 {
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd < 0)
     {
         perror("Failed to open socket");
-        return (-1);
+        exit(0);
     }
 
     struct sockaddr_in server_socket_addr;                             // address of botnet server
@@ -195,7 +195,7 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
     if (connect(socketfd, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) < 0)
     {
         perror("Failed to connect");
-        return (-1);
+        exit(0);
     }
 
     botnet_servers[socketfd] = new Botnet_server(socketfd);
@@ -256,7 +256,7 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, 
     FD_CLR(botnet_server_sock, &open_sockets);
 }
 
-int server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
+void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
     for (auto const &pair : botnet_servers)
     {
@@ -285,7 +285,7 @@ int server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sock
     }
 }
 
-int client_commands(int& clientSocket)
+void client_commands(int& clientSocket)
 {
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
@@ -349,10 +349,10 @@ int main(int argc, char *argv[])
         {
             perror("select failed - closing down\n");
             break;
-        }
+        } 
 
         // if there is an incoming connection and we have room for more connections.
-        if (FD_ISSET(listenSocket, &read_sockets) && botnet_servers.size < 5)
+        if (FD_ISSET(listenSocket, &read_sockets) && botnet_servers.size() < 5)
         {
             // accepts connection, maybe changes maxfds, add to botnet_servers
             new_connections(listenSocket, maxfds, open_sockets, botnet_servers);
