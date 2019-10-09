@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <map>
 #include <vector>
-#include <regex>
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -32,23 +31,70 @@ using namespace std;
 #define BUFFERSIZE 1025
 
 string OUR_GROUP_ID = "P3_GROUP_75";
+bool VERBOSE = true;
+char SOH = 1; // beg symbol
+char EOT = 4; // end symbol
 
 class Botnet_server
 {
 public:
     int sock; // socket of server connection
     string group_id;
+    string ip_address;
+    int portnr;
 
-    Botnet_server(int socket) : sock(socket) {}
-    Botnet_server(int socket, string group_id)
+    Botnet_server(int socket) {
+        this->sock = socket;
+    }
+
+    Botnet_server(int socket, string group_id, string ip_address, int portnr)
     {
         this->sock = socket;
         this->group_id = group_id;
+        this->portnr = portnr;
+        this->ip_address = ip_address;
     }
 
     ~Botnet_server() {} // Virtual destructor defined for base class
 };
 
+class Command
+{
+public:
+    string command;
+    vector<string> arguments;
+    Command(string raw_command)
+    {
+        stringstream ss(raw_command);
+        getline(ss, command, ',');
+
+        string argument;
+        while (getline(ss, argument, ','))
+        {
+            arguments.push_back(argument);
+        }
+    }
+
+    string to_string()
+    {
+        string return_str = "command: " + command + "\n" + "arguments: ";
+        for (auto i = arguments.begin(); i != arguments.end(); ++i)
+            return_str += *i + " ";
+
+        return return_str;
+    }
+};
+
+void if_verbose(string text)
+{
+    if (VERBOSE)
+    {
+        cout << text << endl;
+    }
+}
+/*
+*   Sets up a listening socket to listen to client and server commands
+*/
 void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &open_sockets)
 {
     struct addrinfo hints, *servinfo, *p;
@@ -81,7 +127,7 @@ void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &ope
             perror("setsockopt");
             exit(1);
         }
-        if (bind(listeningSocket, p->ai_addr, p->ai_addrlen) == -1)
+        if (::bind(listeningSocket, p->ai_addr, p->ai_addrlen) == -1)
         {
             close(listeningSocket);
             perror("server: bind");
@@ -90,6 +136,8 @@ void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &ope
         break;
     }
     freeaddrinfo(servinfo); // all done with this structure
+
+    // Make sure the socket was established correctly
     if (p == NULL)
     {
         fprintf(stderr, "server: failed to bind\n");
@@ -130,13 +178,13 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 }
 
 /*
-* this function waits for beginnig connection to the botnet
-* waits for client to send a valid CONNECTTO,<ip>,<port> command
+* this function waits for beginning connection to the botnet
+* waits for client to send a valid CONNECTTO,<ip>,<port>,<groupId> command
 * extracts the ip and port and returns it via output parameters.
 */
 void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 {
-    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>\n");
+    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>,<groupId>\n");
 
     char server_connect_command[BUFFERSIZE];
     memset(server_connect_command, 0, BUFFERSIZE);
@@ -151,9 +199,9 @@ void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
         }
         server_connect_command[BUFFERSIZE - 1] = '\0';
 
-        string string_command(server_connect_command);                  // char array to string
-        regex e("(CONNECTTO,)(\\d{1,3}(\\.\\d{1,3}){3})(,)(\\d{1,4})"); // regular expression for CONNECTTO,<ip>,<portnr>
-        if (regex_match(string_command, e))
+        string string_command(server_connect_command); // char array to string
+        // TODO: check if command is correct
+        if (true)
         {
             // extract ip and port
             size_t firstCommaIndex = string_command.find(",", 0);
@@ -170,6 +218,75 @@ void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
             send(clientSock, message.c_str(), message.length(), 0);
         }
     }
+}
+
+void split(string &str, vector<string> &cont, char delim = ' ')
+{
+    std::stringstream ss(str);
+    std::string token;
+    while (std::getline(ss, token, delim))
+    {
+        cont.push_back(token);
+    }
+}
+
+/*
+* takes SERVERS,<groupid,ip,port>;<groupid,ip,port>; and converts to vector of Botnet_server objects
+*/
+void servers_response_to_vector(string servers_response, vector<Botnet_server>& servers)
+{
+    // first remove "SERVERS" from string
+    servers_response = servers_response.substr(8);
+
+    vector<string> server_strings;
+    split(servers_response, server_strings, ';');
+
+    for (auto i = server_strings.begin(); i != server_strings.end(); ++i)
+    {
+        vector<string> server_parts;
+        split(*i, server_parts, ',');
+
+        if (server_parts.size() == 3)
+        {
+            Botnet_server server = Botnet_server(-1, server_parts[0], server_parts[1], stoi(server_parts[2]));
+            servers.push_back(server);
+        }
+    }
+}
+
+Botnet_server get_botnet_server_info(int socketfd)
+{
+    
+    // TODO: exchange part of this with send_listserver_cmd when that is implemented to reduce code repitition.
+    std::string message;
+    message.push_back(SOH);
+    message += "LISTSERVERS," + OUR_GROUP_ID + EOT;
+    message.push_back(EOT);
+    send(socketfd, message.c_str(), message.size(), 0);
+
+    char buffer[BUFFERSIZE];
+    memset(buffer, 0, BUFFERSIZE);
+
+    int byteCount = recv(socketfd, buffer, BUFFERSIZE, MSG_DONTWAIT);
+    // continue to receive until we have a full message
+    while (buffer[byteCount - 1] != EOT)
+    {
+        byteCount += recv(socketfd, buffer + byteCount, sizeof(buffer), MSG_DONTWAIT);
+    }
+
+    // TODO: if bytecount is zero then bail on this connection
+
+    // remove EOT and SOH from buffer and convert to string.
+    buffer[byteCount - 1] = '\0';
+    string response_string(buffer);
+    response_string = response_string.substr(1);
+
+    // TODO: check if format is correct
+
+    vector<Botnet_server> servers;
+    servers_response_to_vector(response_string, servers);
+
+    return servers[0];
 }
 
 /*
@@ -256,8 +373,10 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, 
     FD_CLR(botnet_server_sock, &open_sockets);
 }
 
+// TODO: timeout and if we reach buffersize+ then we drop the ignore the message and move on
 void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
+    if_verbose("in server commands");
     for (auto const &pair : botnet_servers)
     {
         Botnet_server *botnet_server = pair.second;
@@ -267,8 +386,9 @@ void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
             char buffer[BUFFERSIZE];
             memset(buffer, 0, BUFFERSIZE);
 
-            // recv() == 0 means client has closed connection
-            if (recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+            int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
+            // recv() == 0 means server has closed connection
+            if (byteCount == 0)
             {
                 printf("Botnet server closed connection: %d", botnet_server->sock);
                 close(botnet_server->sock);
@@ -279,13 +399,29 @@ void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
             // only triggers if there is something on the socket for us.
             else
             {
-                cout << buffer << endl;
+                // continue to receive until we have a full message
+                
+                while (buffer[byteCount - 1] != EOT)
+                {
+                    byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
+                }
+
+                // remove EOT and SOH from buffer and convert to string.
+                buffer[byteCount - 1] = '\0';
+                string response_string(buffer);
+                response_string = response_string.substr(1);
+
+                if_verbose(response_string);
+
+                Command command = Command(response_string);
+
+                if_verbose(command.to_string());
             }
         }
     }
 }
 
-void client_commands(int& clientSocket)
+void client_commands(int &clientSocket)
 {
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
@@ -333,6 +469,8 @@ int main(int argc, char *argv[])
     string botnet_server_ip;
     int botnet_server_port;
     client_botnet_connect_cmd(clientSock, botnet_server_ip, botnet_server_port);
+    if_verbose(botnet_server_ip);
+    if_verbose(to_string(botnet_server_port));
 
     // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
     connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets);
@@ -349,7 +487,7 @@ int main(int argc, char *argv[])
         {
             perror("select failed - closing down\n");
             break;
-        } 
+        }
 
         // if there is an incoming connection and we have room for more connections.
         if (FD_ISSET(listenSocket, &read_sockets) && botnet_servers.size() < 5)

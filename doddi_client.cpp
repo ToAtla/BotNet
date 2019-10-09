@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     do
     {
         // get command from user
-        cout << "enter command to send to server, fx CONNECTTO,<server ip>,<portno>: ";
+        cout << "enter command to send to server, fx CONNECTTO,<server ip>,<portno>,<group_id>: ";
         getline(cin, command);
 
         if (command.size() > 0 && command.compare("exit")) // bigger then 0 and not exit
