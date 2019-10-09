@@ -31,6 +31,7 @@ using namespace std;
 #define BUFFERSIZE 1025
 
 string OUR_GROUP_ID = "P3_GROUP_75";
+string STANDIN_GROUPID = "XXX";
 bool VERBOSE = true;
 char SOH = 1; // beg symbol
 char EOT = 4; // end symbol
@@ -43,7 +44,8 @@ public:
     string ip_address;
     int portnr;
 
-    Botnet_server(int socket) {
+    Botnet_server(int socket)
+    {
         this->sock = socket;
     }
 
@@ -75,11 +77,19 @@ public:
         }
     }
 
+    Command()
+    {
+    }
+
     string to_string()
     {
-        string return_str = "command: " + command + "\n" + "arguments: ";
+
+        string return_str;
+        return_str.push_back(SOH);
+        return_str += command;
         for (auto i = arguments.begin(); i != arguments.end(); ++i)
-            return_str += *i + " ";
+            return_str += "," + *i;
+        return_str.push_back(EOT);
 
         return return_str;
     }
@@ -233,7 +243,7 @@ void split(string &str, vector<string> &cont, char delim = ' ')
 /*
 * takes SERVERS,<groupid,ip,port>;<groupid,ip,port>; and converts to vector of Botnet_server objects
 */
-void servers_response_to_vector(string servers_response, vector<Botnet_server>& servers)
+void servers_response_to_vector(string servers_response, vector<Botnet_server> &servers)
 {
     // first remove "SERVERS" from string
     servers_response = servers_response.substr(8);
@@ -256,7 +266,7 @@ void servers_response_to_vector(string servers_response, vector<Botnet_server>& 
 
 Botnet_server get_botnet_server_info(int socketfd)
 {
-    
+
     // TODO: exchange part of this with send_listserver_cmd when that is implemented to reduce code repitition.
     std::string message;
     message.push_back(SOH);
@@ -289,18 +299,34 @@ Botnet_server get_botnet_server_info(int socketfd)
     return servers[0];
 }
 
+void send_list_servers_cmd(int socketfd)
+{
+    Command command = Command();
+    command.command = "LISTSERVERS";
+    command.arguments.push_back(OUR_GROUP_ID);
+
+    // TODO: error handling
+    send(socketfd, command.to_string().c_str(), command.to_string().size(), 0);
+}
+
 /*
 * connects to server and returns socket file descriptor
 * incrament botner-server connection count
 */
 void connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
 {
+    if_verbose("inside connect_to_botnet_server");
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd < 0)
     {
         perror("Failed to open socket");
         exit(0);
     }
+
+    // TODO: remove this after debugging
+    cout << botnet_port << endl;
+    cout << botnet_ip.c_str() << endl;
+    cout << socketfd << endl;
 
     struct sockaddr_in server_socket_addr;                             // address of botnet server
     memset(&server_socket_addr, 0, sizeof(server_socket_addr));        // Initialise memory
@@ -311,11 +337,16 @@ void connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet
     // connect to server
     if (connect(socketfd, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) < 0)
     {
+        if_verbose("inside botnet connection error");
         perror("Failed to connect");
         exit(0);
     }
+    if_verbose("attemtping to add to botnet server list");
 
-    botnet_servers[socketfd] = new Botnet_server(socketfd);
+    // send LISTSERVERS command to learn the server id.
+    send_list_servers_cmd(socketfd);
+
+    botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
 
     maxfds = max(maxfds, socketfd);
     FD_SET(socketfd, &open_sockets);
@@ -373,8 +404,20 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, 
     FD_CLR(botnet_server_sock, &open_sockets);
 }
 
+/*
+* extract the beginning of the message to see if it is for example LISTSERVERS or KEEPALIVE or 
+*/
+string get_message_type(string message)
+{
+    string type;
+    stringstream ss(message);
+    getline(ss, type, ',');
+
+    return type;
+}
+
 // TODO: timeout and if we reach buffersize+ then we drop the ignore the message and move on
-void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
+void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
     if_verbose("in server commands");
     for (auto const &pair : botnet_servers)
@@ -400,22 +443,25 @@ void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
             else
             {
                 // continue to receive until we have a full message
-                
+
                 while (buffer[byteCount - 1] != EOT)
                 {
                     byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
                 }
-
                 // remove EOT and SOH from buffer and convert to string.
                 buffer[byteCount - 1] = '\0';
+
                 string response_string(buffer);
                 response_string = response_string.substr(1);
 
+                string message_type = get_message_type(response_string);
+
+                if (message_type == "SERVER") {
+                    
+                }
+                //Command command = Command(response_string);
                 if_verbose(response_string);
-
-                Command command = Command(response_string);
-
-                if_verbose(command.to_string());
+                //if_verbose(command.to_string());
             }
         }
     }
@@ -507,7 +553,7 @@ int main(int argc, char *argv[])
         while (n-- > 0)
         {
             // check for commands from connected servers
-            server_commands(botnet_servers, open_sockets, read_sockets, maxfds);
+            server_messages(botnet_servers, open_sockets, read_sockets, maxfds);
         }
     }
 }
