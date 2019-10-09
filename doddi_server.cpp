@@ -92,7 +92,9 @@ void if_verbose(string text)
         cout << text << endl;
     }
 }
-
+/*
+*   Sets up a listening socket to listen to client and server commands
+*/
 void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &open_sockets)
 {
     struct addrinfo hints, *servinfo, *p;
@@ -125,7 +127,7 @@ void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &ope
             perror("setsockopt");
             exit(1);
         }
-        if (bind(listeningSocket, p->ai_addr, p->ai_addrlen) == -1)
+        if (::bind(listeningSocket, p->ai_addr, p->ai_addrlen) == -1)
         {
             close(listeningSocket);
             perror("server: bind");
@@ -134,6 +136,8 @@ void establish_server(char *port, int &listeningSocket, int &maxfds, fd_set &ope
         break;
     }
     freeaddrinfo(servinfo); // all done with this structure
+
+    // Make sure the socket was established correctly
     if (p == NULL)
     {
         fprintf(stderr, "server: failed to bind\n");
@@ -174,7 +178,7 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 }
 
 /*
-* this function waits for beginnig connection to the botnet
+* this function waits for beginning connection to the botnet
 * waits for client to send a valid CONNECTTO,<ip>,<port>,<groupId> command
 * extracts the ip and port and returns it via output parameters.
 */
@@ -252,8 +256,12 @@ void servers_response_to_vector(string servers_response, vector<Botnet_server>& 
 
 Botnet_server get_botnet_server_info(int socketfd)
 {
+    
     // TODO: exchange part of this with send_listserver_cmd when that is implemented to reduce code repitition.
-    string message = SOH + "LISTSERVERS," + OUR_GROUP_ID + EOT;
+    std::string message;
+    message.push_back(SOH);
+    message += "LISTSERVERS," + OUR_GROUP_ID + EOT;
+    message.push_back(EOT);
     send(socketfd, message.c_str(), message.size(), 0);
 
     char buffer[BUFFERSIZE];
@@ -380,7 +388,7 @@ void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
 
             int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
             // recv() == 0 means server has closed connection
-            if (byteCount < 0)
+            if (byteCount == 0)
             {
                 printf("Botnet server closed connection: %d", botnet_server->sock);
                 close(botnet_server->sock);
@@ -392,9 +400,10 @@ void server_commands(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
             else
             {
                 // continue to receive until we have a full message
+                
                 while (buffer[byteCount - 1] != EOT)
                 {
-                    byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer), MSG_DONTWAIT);
+                    byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
                 }
 
                 // remove EOT and SOH from buffer and convert to string.
