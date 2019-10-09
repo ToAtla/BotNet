@@ -59,8 +59,9 @@ public:
 
     string to_string()
     {
-        string return_str = "";
-        return_str += group_id + "," + ip_address + "," + std::to_string(portnr);
+        string return_str;
+        return_str = group_id + "," + ip_address + "," + std::to_string(portnr);
+        return return_str;
     }
 
     ~Botnet_server() {} // Virtual destructor defined for base class
@@ -433,7 +434,7 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
 
                     for (auto i = servers.begin(); i != servers.end(); ++i)
                     {
-                        cout << (*i).to_string(); << endl;
+                        cout << (*i).to_string() << endl;
                     }
                 }
             }
