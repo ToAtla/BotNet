@@ -60,7 +60,7 @@ public:
     string to_string()
     {
         string return_str = "";
-        return_str += group_id + "," + ip_address + "," + to_string(portnr);
+        return_str += group_id + "," + ip_address + "," + std::to_string(portnr);
     }
 
     ~Botnet_server() {} // Virtual destructor defined for base class
