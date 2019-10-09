@@ -404,6 +404,7 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
             memset(buffer, 0, BUFFERSIZE);
 
             int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
+            if_verbose("after first receive in server_messages");
             // recv() == 0 means server has closed connection
             if (byteCount == 0)
             {
@@ -420,6 +421,7 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
 
                 while (buffer[byteCount - 1] != EOT)
                 {
+                    if_verbose("inside while gathering response");
                     byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
                 }
                 // remove EOT and SOH from buffer and convert to string.
@@ -427,10 +429,13 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
 
                 string response_string(buffer);
                 response_string = response_string.substr(1);
+                
+                if_verbose("response from server message:" + response_string);
 
                 string message_type = get_message_type(response_string);
                 if (message_type == "SERVERS")
                 {
+                    if_verbose("inside SERVERS if");
                     // but the received servers into a more organized form
                     vector<Botnet_server> servers;
                     servers_response_to_vector(response_string, servers);
@@ -440,7 +445,7 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
                     botnet_server->ip_address = servers[0].ip_address;
                     botnet_server->portnr = servers[0].portnr;
 
-                    cout << "testy: " << botnet_server->to_string() << endl;
+                    if_verbose("sending server info: " + botnet_server->to_string());
                     //TODO: kannski reyna að tengjast helling af fólki hér automatically
                 }
             }
