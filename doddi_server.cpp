@@ -429,14 +429,21 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
                 string message_type = get_message_type(response_string);
                 if (message_type == "SERVERS")
                 {
+                    // but the received servers into a more organized form
                     vector<Botnet_server> servers;
                     servers_response_to_vector(response_string, servers);
 
-                    for (auto i = servers.begin(); i != servers.end(); ++i)
-                    {
-                        cout << (*i).to_string() << endl;
-                    }
+                    // update the the values int the botnet list, this is mostly for the group_id.
+                    botnet_server->group_id = servers[0].group_id;
+                    botnet_server->ip_address = servers[0].ip_address;
+                    botnet_server->portnr = servers[0].portnr;
+
+                    cout << "testy: " << botnet_server->to_string() << endl;
+                    //TODO: kannski reyna að tengjast helling af fólki hér automatically
                 }
+
+
+
             }
         }
     }
