@@ -344,7 +344,9 @@ void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int
     {
         FD_SET(server_socket, &open_sockets);
 
-        botnet_servers[server_socket] = new Botnet_server(server_socket);
+        // send LISTSERVERS command to learn the server id.
+        send_list_servers_cmd(socketfd);
+        botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
 
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
@@ -441,9 +443,6 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
                     cout << "testy: " << botnet_server->to_string() << endl;
                     //TODO: kannski reyna að tengjast helling af fólki hér automatically
                 }
-
-
-
             }
         }
     }
