@@ -57,6 +57,12 @@ public:
         this->ip_address = ip_address;
     }
 
+    string to_string()
+    {
+        string return_str = "";
+        return_str += group_id + "," + ip_address + "," + to_string(portnr);
+    }
+
     ~Botnet_server() {} // Virtual destructor defined for base class
 };
 
@@ -264,41 +270,6 @@ void servers_response_to_vector(string servers_response, vector<Botnet_server> &
     }
 }
 
-Botnet_server get_botnet_server_info(int socketfd)
-{
-
-    // TODO: exchange part of this with send_listserver_cmd when that is implemented to reduce code repitition.
-    std::string message;
-    message.push_back(SOH);
-    message += "LISTSERVERS," + OUR_GROUP_ID + EOT;
-    message.push_back(EOT);
-    send(socketfd, message.c_str(), message.size(), 0);
-
-    char buffer[BUFFERSIZE];
-    memset(buffer, 0, BUFFERSIZE);
-
-    int byteCount = recv(socketfd, buffer, BUFFERSIZE, MSG_DONTWAIT);
-    // continue to receive until we have a full message
-    while (buffer[byteCount - 1] != EOT)
-    {
-        byteCount += recv(socketfd, buffer + byteCount, sizeof(buffer), MSG_DONTWAIT);
-    }
-
-    // TODO: if bytecount is zero then bail on this connection
-
-    // remove EOT and SOH from buffer and convert to string.
-    buffer[byteCount - 1] = '\0';
-    string response_string(buffer);
-    response_string = response_string.substr(1);
-
-    // TODO: check if format is correct
-
-    vector<Botnet_server> servers;
-    servers_response_to_vector(response_string, servers);
-
-    return servers[0];
-}
-
 void send_list_servers_cmd(int socketfd)
 {
     Command command = Command();
@@ -455,13 +426,16 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
                 response_string = response_string.substr(1);
 
                 string message_type = get_message_type(response_string);
+                if (message_type == "SERVERS")
+                {
+                    vector<Botnet_server> servers;
+                    servers_response_to_vector(response_string, servers);
 
-                if (message_type == "SERVER") {
-                    
+                    for (auto i = servers.begin(); i != servers.end(); ++i)
+                    {
+                        cout << (*i).to_string(); << endl;
+                    }
                 }
-                //Command command = Command(response_string);
-                if_verbose(response_string);
-                //if_verbose(command.to_string());
             }
         }
     }
