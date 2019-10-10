@@ -32,6 +32,8 @@ using namespace std;
 
 string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
+int OUR_PORTNR;
+int OUR_IP;
 bool VERBOSE = true;
 char SOH = 1; // beg symbol
 char EOT = 4; // end symbol
@@ -60,7 +62,7 @@ public:
     string to_string()
     {
         string return_str;
-        return_str = group_id + "," + ip_address + "," + std::to_string(portnr);
+        return_str = group_id + "," + ip_address + "," + std::to_string(portnr) + ";";
         return return_str;
     }
 
@@ -295,11 +297,6 @@ void connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet
         exit(0);
     }
 
-    // TODO: remove this after debugging
-    cout << botnet_port << endl;
-    cout << botnet_ip.c_str() << endl;
-    cout << socketfd << endl;
-
     struct sockaddr_in server_socket_addr;                             // address of botnet server
     memset(&server_socket_addr, 0, sizeof(server_socket_addr));        // Initialise memory
     server_socket_addr.sin_family = AF_INET;                           // pv4
@@ -388,6 +385,31 @@ string get_message_type(string message)
     return type;
 }
 
+void send_list_of_connected_servers(int socketfd, const map<int, Botnet_server *> botnet_servers)
+{
+    if_verbose("inside send_list_of_connected_servers");
+    string message = "";
+    message.push_back(SOH);
+    message += "SERVERS,";
+
+    //  TODO: have the ip dynamic like OUR_PORTNR
+    Botnet_server my_server = Botnet_server(-1, OUR_GROUP_ID, "130.208.243.61", OUR_PORTNR);
+
+    message += my_server.to_string();
+
+    for (auto const &pair : botnet_servers)
+    {
+        Botnet_server *botnet_server = pair.second;
+
+        message += botnet_server->to_string();
+    }
+    message.push_back(EOT);
+
+    send(socketfd, message.c_str(), message.size(), 0);
+
+    if_verbose("sent server list: " + message);
+}
+
 // TODO: timeout and if we reach buffersize+ then we drop the ignore the message and move on
 void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
@@ -427,7 +449,7 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
 
                 string response_string(buffer);
                 response_string = response_string.substr(1);
-                
+
                 if_verbose("response from server message:" + response_string);
 
                 string message_type = get_message_type(response_string);
@@ -443,12 +465,17 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_soc
                     botnet_server->ip_address = servers[0].ip_address;
                     botnet_server->portnr = servers[0].portnr;
 
-                    if_verbose("sending server info: " + botnet_server->to_string());
+                    if_verbose("server that is sending message: " + botnet_server->to_string());
                     //TODO: kannski reyna að tengjast helling af fólki hér automatically
                 }
+                else if (message_type == "LISTSERVERS")
+                {
+                    if_verbose("inside LISTSERVERS if");
+                    Command command = Command(response_string);
+                    botnet_server->group_id = command.arguments[0];
 
-
-
+                    send_list_of_connected_servers(botnet_server->sock, botnet_servers);
+                }
             }
         }
     }
@@ -482,7 +509,7 @@ int main(int argc, char *argv[])
     fd_set read_sockets;                      // Exception socket list
     fd_set except_sockets;                    // Exception socket list
     int maxfds;                               // Passed to select() as max fd in set
-    map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information
+    map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
 
     if (argc != 2)
     {
@@ -492,6 +519,7 @@ int main(int argc, char *argv[])
 
     // Setup socket for server to listen to connections
     char *port = argv[1];
+    OUR_PORTNR = atoi(port);
     // establish listening socket, initalize maxfds, add to open_sockets
     establish_server(port, listenSocket, maxfds, open_sockets);
 
