@@ -341,7 +341,9 @@ void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int
     {
         FD_SET(server_socket, &open_sockets);
 
-        botnet_servers[server_socket] = new Botnet_server(server_socket);
+        // send LISTSERVERS command to learn the server id.
+        send_list_servers_cmd(server_socket);
+        botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, server_addr.sin_addr, server_addr.sin_port);
 
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
@@ -410,7 +412,7 @@ void send_list_of_connected_servers(int socketfd, const map<int, Botnet_server *
     if_verbose("sent server list: " + message);
 }
 
-// TODO: timeout and if we reach buffersize+ then we drop the ignore the message and move on
+// TODO: add timeout and if we reach buffersize+ then we drop the ignore the message and move on
 void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
 {
     if_verbose("in server commands");
