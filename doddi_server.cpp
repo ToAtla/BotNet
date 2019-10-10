@@ -343,7 +343,14 @@ void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int
 
         // send LISTSERVERS command to learn the server id.
         send_list_servers_cmd(server_socket);
-        botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, server_addr.sin_addr, server_addr.sin_port);
+
+
+        // TODO: havent been able to test if the port and ip extraction worked
+        char ip_address[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
+        botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
+
+        if_verbose("after new connection this is the stored server: " + botnet_servers[server_socket]->to_string());
 
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
@@ -413,72 +420,63 @@ void send_list_of_connected_servers(int socketfd, const map<int, Botnet_server *
 }
 
 // TODO: add timeout and if we reach buffersize+ then we drop the ignore the message and move on
-void server_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, fd_set &read_sockets, int &maxfds)
+void server_messages(map<int, Botnet_server *> &botnet_servers, Botnet_server *botnet_server, fd_set &open_sockets, int &maxfds)
 {
-    if_verbose("in server commands");
-    for (auto const &pair : botnet_servers)
+    char buffer[BUFFERSIZE];
+    memset(buffer, 0, BUFFERSIZE);
+
+    int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
+    if_verbose("after first receive in server_messages");
+    // recv() == 0 means server has closed connection
+    if (byteCount == 0)
     {
-        Botnet_server *botnet_server = pair.second;
+        printf("Botnet server closed connection: %d", botnet_server->sock);
+        close(botnet_server->sock);
 
-        if (FD_ISSET(botnet_server->sock, &read_sockets))
+        close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+    }
+    // We don't check for -1 (nothing received) because select()
+    // only triggers if there is something on the socket for us.
+    else
+    {
+        // continue to receive until we have a full message
+
+        while (buffer[byteCount - 1] != EOT)
         {
-            char buffer[BUFFERSIZE];
-            memset(buffer, 0, BUFFERSIZE);
+            if_verbose("inside while gathering response");
+            byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
+        }
+        // remove EOT and SOH from buffer and convert to string.
+        buffer[byteCount - 1] = '\0';
 
-            int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
-            if_verbose("after first receive in server_messages");
-            // recv() == 0 means server has closed connection
-            if (byteCount == 0)
-            {
-                printf("Botnet server closed connection: %d", botnet_server->sock);
-                close(botnet_server->sock);
+        string response_string(buffer);
+        response_string = response_string.substr(1);
 
-                close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
-            }
-            // We don't check for -1 (nothing received) because select()
-            // only triggers if there is something on the socket for us.
-            else
-            {
-                // continue to receive until we have a full message
+        if_verbose("response from server message:" + response_string);
 
-                while (buffer[byteCount - 1] != EOT)
-                {
-                    if_verbose("inside while gathering response");
-                    byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
-                }
-                // remove EOT and SOH from buffer and convert to string.
-                buffer[byteCount - 1] = '\0';
+        string message_type = get_message_type(response_string);
+        if (message_type == "SERVERS")
+        {
+            if_verbose("inside SERVERS if");
+            // but the received servers into a more organized form
+            vector<Botnet_server> servers;
+            servers_response_to_vector(response_string, servers);
 
-                string response_string(buffer);
-                response_string = response_string.substr(1);
+            // update the the values int the botnet list, this is mostly for the group_id.
+            botnet_server->group_id = servers[0].group_id;
+            botnet_server->ip_address = servers[0].ip_address;
+            botnet_server->portnr = servers[0].portnr;
 
-                if_verbose("response from server message:" + response_string);
+            if_verbose("server that is sending message: " + botnet_server->to_string());
+            //TODO: kannski reyna að tengjast helling af fólki hér automatically
+        }
+        else if (message_type == "LISTSERVERS")
+        {
+            if_verbose("inside LISTSERVERS if");
+            Command command = Command(response_string);
+            botnet_server->group_id = command.arguments[0];
 
-                string message_type = get_message_type(response_string);
-                if (message_type == "SERVERS")
-                {
-                    if_verbose("inside SERVERS if");
-                    // but the received servers into a more organized form
-                    vector<Botnet_server> servers;
-                    servers_response_to_vector(response_string, servers);
-
-                    // update the the values int the botnet list, this is mostly for the group_id.
-                    botnet_server->group_id = servers[0].group_id;
-                    botnet_server->ip_address = servers[0].ip_address;
-                    botnet_server->portnr = servers[0].portnr;
-
-                    if_verbose("server that is sending message: " + botnet_server->to_string());
-                    //TODO: kannski reyna að tengjast helling af fólki hér automatically
-                }
-                else if (message_type == "LISTSERVERS")
-                {
-                    if_verbose("inside LISTSERVERS if");
-                    Command command = Command(response_string);
-                    botnet_server->group_id = command.arguments[0];
-
-                    send_list_of_connected_servers(botnet_server->sock, botnet_servers);
-                }
-            }
+            send_list_of_connected_servers(botnet_server->sock, botnet_servers);
         }
     }
 }
@@ -567,10 +565,15 @@ int main(int argc, char *argv[])
             n--;
         }
 
-        while (n-- > 0)
+        // for each connected server check for any incomming commands/messages
+        for (auto const &pair : botnet_servers)
         {
-            // check for commands from connected servers
-            server_messages(botnet_servers, open_sockets, read_sockets, maxfds);
+            Botnet_server *botnet_server = pair.second;
+            if (FD_ISSET(botnet_server->sock, &read_sockets))
+            {
+                server_messages(botnet_servers, botnet_server, open_sockets, maxfds);
+                n--;
+            }
         }
     }
 }
