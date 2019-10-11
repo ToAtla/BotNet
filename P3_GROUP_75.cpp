@@ -36,7 +36,7 @@ string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
 int OUR_PORTNR;
 int OUR_IP;
-bool VERBOSE = true;
+bool VERBOSE = false;
 char SOH = 1;                         // beg symbol
 char EOT = 4;                         // end symbol
 map<string, vector<string>> mail_box; // maps group ids to  their stored messages
@@ -132,12 +132,12 @@ string get_timestamp()
 
 void log_incoming(string message)
 {
-    cout << get_timestamp() << " INCOMING " << message << endl;
+    cout << get_timestamp() << " INCOMING    <<" << message << endl;
 }
 
 void log_outgoing(string message)
 {
-    cout << get_timestamp() << " OUTGOING " << message << endl;
+    cout << get_timestamp() << " OUTGOING    >>" << message << endl;
 }
 
 /*
@@ -546,6 +546,9 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             Command send_msg_command = Command(incoming_string);
             cout << "Message recieved FROM " + send_msg_command.arguments[1] + " TO " + send_msg_command.arguments[2] + " MSG: " + send_msg_command.arguments[3] << endl;
         }
+        else if (message_type == "KEEPALIVE"){
+            send_and_log(botnet_server->sock, "Keepalive confirmed, thanks for the update");
+        }
         else
         {
             // Not a valid command
@@ -595,7 +598,8 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         else if (type == "LISTSERVERS")
         {
             if_verbose("Listing servers for client");
-            send_and_log(clientSocket, "Listing servers - not implemented");
+            string server_list = get_connected_servers(botnet_servers);
+            send_and_log(clientSocket, server_list);
         }
         else if (type == "SEND_MSG")
         {
