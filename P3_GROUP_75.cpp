@@ -132,12 +132,12 @@ string get_timestamp()
 
 void log_incoming(string message)
 {
-    cout << get_timestamp() << " INCOMING    <<" << message << endl;
+    cout << get_timestamp() << " INCOMING    << " << message << endl;
 }
 
 void log_outgoing(string message)
 {
-    cout << get_timestamp() << " OUTGOING    >>" << message << endl;
+    cout << get_timestamp() << " OUTGOING    >> " << message << endl;
 }
 
 /*
@@ -578,7 +578,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
     {
         buffer[byteCount + 1] = '\0';
         Command command = Command(string(buffer));
-        log_incoming(command.command);
+        log_incoming(command.to_string());
         string type = get_message_type(command.command);
         if (type == "CONNECTTO")
         {
