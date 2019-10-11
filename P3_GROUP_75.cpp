@@ -631,7 +631,9 @@ int main(int argc, char *argv[])
     if_verbose(to_string(botnet_server_port));
 
     // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
-    connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets);
+    if( connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets) < 0){
+        send_through_socket(clientSock, "Connected to indicated server");
+    }
 
     auto start = chrono::high_resolution_clock::now();
     while (true)
