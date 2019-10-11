@@ -106,7 +106,6 @@ public:
     }
 };
 
-
 /*
 *   Sends a message through the given socket
 */
@@ -127,7 +126,8 @@ void if_verbose(string text)
 {
     if (VERBOSE)
     {
-        cout << text << endl;
+        cout << text << endl
+             << endl;
     }
 }
 /*
@@ -223,7 +223,7 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 */
 void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 {
-    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>,<groupId>\n");
+    printf("waiting for client server connect command: CONNECTTO,<server_ip>,<port>\n");
 
     char server_connect_command[BUFFERSIZE];
     memset(server_connect_command, 0, BUFFERSIZE);
@@ -500,11 +500,10 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         else if (message_type == "SEND_MSG")
         {
             Command send_msg_command = Command(response_string);
-            cout << "Message recieved FROM " + send_msg_command.arguments[1] 
-            + " TO " + send_msg_command.arguments[2] 
-            + " MSG: " + send_msg_command.arguments[3] << endl;
+            cout << "Message recieved FROM " + send_msg_command.arguments[1] + " TO " + send_msg_command.arguments[2] + " MSG: " + send_msg_command.arguments[3] << endl;
         }
-        else {
+        else
+        {
             // Not a valid command
             string error("Command " + response_string + " not recognized");
             if_verbose(error);
@@ -531,25 +530,44 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
     {
         buffer[byteCount + 1] = '\0';
         Command command = Command(string(buffer));
-        cout << "measurement string " << command.command << endl;
-        if (command.command == "CONNECTTO")
+        string type = get_message_type(command.command);
+        if (type == "CONNECTTO")
         {
+            if_verbose("Received CONNECTTO command from client");
             string ip = command.arguments[0];
             int port = stoi(command.arguments[1]);
 
-            if(connect_to_botnet_server(ip, port, botnet_servers, maxfds, open_sockets) == 0){
+            if (connect_to_botnet_server(ip, port, botnet_servers, maxfds, open_sockets) == 0)
+            {
                 send_through_socket(clientSocket, "Connected successfully to indicated server");
-            }else{
+            }
+            else
+            {
                 send_through_socket(clientSocket, "Failed to connect to indicated server");
             }
         }
-        else{
+        else if (type == "LISTSERVERS")
+        {
+            send_through_socket(clientSocket, "Listing servers - not implemented");
+        }
+        else if (type == "SEND_MSG")
+        {
+            send_through_socket(clientSocket, "Sending message - not implemented");
+        }
+        else if (type == "GET_MSG")
+        {
+            send_through_socket(clientSocket, "Getting message - not implemented");
+        }
+        else if (type == "WHO")
+        {
+            send_through_socket(clientSocket, "Who - not implemented");
+        }
+        else
+        {
             send_through_socket(clientSocket, "Sorry, I don't recognize that commmand");
         }
     }
 }
-
-
 
 void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
 {

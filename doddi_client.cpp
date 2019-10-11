@@ -44,7 +44,8 @@ int main(int argc, char *argv[])
     {
         // get command from user
         cout << "Hint: Skel's ip is 130.208.243.61" << endl;
-        cout << "enter command to send to server, fx CONNECTTO,<server ip>,<portno>,<group_id>: ";
+        cout << "enter command to send to server" << endl;
+        cout << "E.g. CONNECTTO,<server ip>,<portno>:" << endl;
         getline(cin, command);
 
         if (command.size() > 0 && command.compare("exit")) // bigger then 0 and not exit
@@ -63,7 +64,7 @@ int main(int argc, char *argv[])
                 int responseSize = 6000;
                 char response[responseSize];
                 memset(response, 0, responseSize); // zero initialize char array
-                /*int byteCount = recv(socketfd, response, responseSize, 0); // this blocks and waits til it receives something from the server
+                int byteCount = recv(socketfd, response, responseSize, 0); // this blocks and waits til it receives something from the server
                 if (byteCount < 0)
                 {
                     cout << "error receiving output from server" << endl;
@@ -72,7 +73,7 @@ int main(int argc, char *argv[])
                 {
                     response[byteCount] = '\0'; // make sure to end the string at the right spot so we dont read of out memory
                     printf("%s\n", response);
-                }*/
+                }
             }
         }
     } while (command.compare("exit")); // while command is not exit
