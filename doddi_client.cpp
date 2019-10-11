@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
     do
     {
         // get command from user
+        cout << "Hint: Skel's ip is 130.208.243.61" << endl;
         cout << "enter command to send to server, fx CONNECTTO,<server ip>,<portno>,<group_id>: ";
         getline(cin, command);
 
