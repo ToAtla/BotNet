@@ -632,7 +632,10 @@ int main(int argc, char *argv[])
 
     // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
     if( connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets) < 0){
+        if_verbose("Connected to botnet server");
         send_through_socket(clientSock, "Connected to indicated server");
+    }else{
+        if_verbose("Did not connect to server");
     }
 
     auto start = chrono::high_resolution_clock::now();
