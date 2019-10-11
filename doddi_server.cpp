@@ -501,6 +501,8 @@ void client_commands(int &clientSocket, map<int, Botnet_server *> &botnet_server
     {
         buffer[byteCount + 1] = '\0';
         Command command = Command(string(buffer));
+
+        //  TODO: handle if we already have 5 connections
         if (command.command == "CONNECTTO")
         {
             string ip = command.arguments[0];
