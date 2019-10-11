@@ -8,6 +8,8 @@ using namespace std;
 
 int main(int argc, char *argv[])
 {
+
+    string hardcoded_string = "CONNECTTO,130.208.243.61,4000";
     // user arguments should be exactly 3, the ip address of the server and the port number
     if (argc != 3)
     {
@@ -46,6 +48,9 @@ int main(int argc, char *argv[])
 
         if (command.size() > 0 && command.compare("exit")) // bigger then 0 and not exit
         {
+            if (!command.compare("connect")) {
+                command = hardcoded_string;
+            }
             // send the server the command
             if (send(socketfd, command.c_str(), command.size() + 1, 0) < 0)
             {
@@ -57,7 +62,7 @@ int main(int argc, char *argv[])
                 int responseSize = 6000;
                 char response[responseSize];
                 memset(response, 0, responseSize); // zero initialize char array
-                int byteCount = recv(socketfd, response, responseSize, 0); // this blocks and waits til it receives something from the server
+                /*int byteCount = recv(socketfd, response, responseSize, 0); // this blocks and waits til it receives something from the server
                 if (byteCount < 0)
                 {
                     cout << "error receiving output from server" << endl;
@@ -66,7 +71,7 @@ int main(int argc, char *argv[])
                 {
                     response[byteCount] = '\0'; // make sure to end the string at the right spot so we dont read of out memory
                     printf("%s\n", response);
-                }
+                }*/
             }
         }
     } while (command.compare("exit")); // while command is not exit

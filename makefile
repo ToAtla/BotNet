@@ -5,7 +5,7 @@ clean:
 build:
 	g++ -Wall -std=c++11 doddi_server.cpp -o doddi_server && g++ -Wall -std=c++11 doddi_client.cpp -o client
 runserverhardcoded:
-	./doddi_server 4039
+	./doddi_server 4040
 runclienthardcoded:
-	./client 130.208.243.61 4039
+	./client 130.208.243.61 4040
 cli: clean build runclienthardcoded

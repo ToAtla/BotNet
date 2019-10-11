@@ -24,6 +24,7 @@
 #include <iostream>
 #include <sstream>
 #include <map>
+#include <chrono>
 
 using namespace std;
 
@@ -35,8 +36,9 @@ string STANDIN_GROUPID = "XXX";
 int OUR_PORTNR;
 int OUR_IP;
 bool VERBOSE = true;
-char SOH = 1; // beg symbol
-char EOT = 4; // end symbol
+char SOH = 1;                         // beg symbol
+char EOT = 4;                         // end symbol
+map<string, vector<string>> mail_box; // maps group ids to  their stored messages
 
 class Botnet_server
 {
@@ -344,7 +346,6 @@ void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int
         // send LISTSERVERS command to learn the server id.
         send_list_servers_cmd(server_socket);
 
-
         // TODO: havent been able to test if the port and ip extraction worked
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
@@ -481,13 +482,14 @@ void server_messages(map<int, Botnet_server *> &botnet_servers, Botnet_server *b
     }
 }
 
-void client_commands(int &clientSocket)
+void client_commands(int &clientSocket, map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
 {
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
 
     // recv() == 0 means client has closed connection
-    if (recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+    int byteCount = recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT);
+    if (byteCount == 0)
     {
         printf("Client closed connection: %d", clientSocket);
         close(clientSocket);
@@ -497,7 +499,44 @@ void client_commands(int &clientSocket)
     // only triggers if there is something on the socket for us.
     else
     {
-        cout << buffer << endl;
+        buffer[byteCount + 1] = '\0';
+        Command command = Command(string(buffer));
+        if (command.command == "CONNECTTO")
+        {
+            string ip = command.arguments[0];
+            int port = stoi(command.arguments[1]);
+
+            connect_to_botnet_server(ip, port, botnet_servers, maxfds, open_sockets);
+        }
+    }
+}
+
+void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
+{
+    Command command = Command();
+    command.command = "KEEPALIVE";
+    command.arguments.push_back("0");
+
+    for (auto const &pair : botnet_servers)
+    {
+        Botnet_server *botnet_server = pair.second;
+
+        // if the group_id is not in the mailbox then just send message count = 0.
+        map<string, vector<string>>::iterator it = mail_box.find(botnet_server->group_id);
+        if (it != mail_box.end())
+        {
+            int message_count = mail_box[botnet_server->group_id].size();
+            command.arguments[0] = to_string(message_count);
+        }
+        else
+        {
+            command.arguments[0] = "0";
+        }
+
+        // TODO: error handling
+        send(botnet_server->sock, command.to_string().c_str(), command.to_string().size(), 0);
+
+        if_verbose("sending keepalive: " + command.to_string());
     }
 }
 
@@ -536,6 +575,7 @@ int main(int argc, char *argv[])
     // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
     connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets);
 
+    auto start = chrono::high_resolution_clock::now();
     while (true)
     {
         // Get modifiable copy of readSockets
@@ -561,7 +601,7 @@ int main(int argc, char *argv[])
         if (FD_ISSET(clientSock, &read_sockets))
         {
             // check for commands from client
-            client_commands(clientSock);
+            client_commands(clientSock, botnet_servers, open_sockets, maxfds);
             n--;
         }
 
@@ -574,6 +614,15 @@ int main(int argc, char *argv[])
                 server_messages(botnet_servers, botnet_server, open_sockets, maxfds);
                 n--;
             }
+        }
+
+        // if time between start and end is bigger then 60 seconds then send keep alive
+        auto end = chrono::high_resolution_clock::now();
+        auto time_elapsed = chrono::duration_cast<chrono::seconds>(end - start);
+        if (time_elapsed.count() >= 60)
+        {
+            send_keep_alive_messages(botnet_servers);
+            start = chrono::high_resolution_clock::now();
         }
     }
 }
