@@ -4,7 +4,15 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <iostream>
+#include <ctime>
 using namespace std;
+
+string get_timestamp(){
+    time_t now = time(0);
+    string time_string(ctime(&now));
+    time_string.pop_back();
+    return time_string;
+}
 
 int main(int argc, char *argv[])
 {
@@ -38,14 +46,12 @@ int main(int argc, char *argv[])
         perror("Failed to connect");
         return (-1);
     }
-
     string command = "";
+    cout << "Hint: Skel's ip is 130.208.243.61" << endl;
     do
     {
-        // get command from user
-        cout << "Hint: Skel's ip is 130.208.243.61" << endl;
-        cout << "enter command to send to server" << endl;
-        cout << "E.g. CONNECTTO,<server ip>,<portno>:" << endl;
+        cout << endl;
+        cout << "Enter a command to the server" << endl;
         getline(cin, command);
 
         if (command.size() > 0 && command.compare("exit")) // bigger then 0 and not exit
@@ -61,6 +67,8 @@ int main(int argc, char *argv[])
             }
             else
             {
+                
+                cout << get_timestamp() << " SENT     >> " << command << endl;
                 int responseSize = 6000;
                 char response[responseSize];
                 memset(response, 0, responseSize); // zero initialize char array
@@ -70,9 +78,10 @@ int main(int argc, char *argv[])
                     cout << "error receiving output from server" << endl;
                 }
                 else
-                {
+                {   
                     response[byteCount] = '\0'; // make sure to end the string at the right spot so we dont read of out memory
-                    printf("%s\n", response);
+                    
+                    cout << get_timestamp() << " RECEIVED << " << response << endl;
                 }
             }
         }
