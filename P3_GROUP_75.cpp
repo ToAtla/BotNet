@@ -839,6 +839,8 @@ int main(int argc, char *argv[])
     fd_set except_sockets;                    // Exception socket list
     int maxfds;                               // Passed to select() as max fd in set
     map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
+    struct timeval keepalive_timeout;         // Time between keepalives
+    keepalive_timeout.tv_sec = 60;
 
     if (argc != 2)
     {
@@ -877,8 +879,6 @@ int main(int argc, char *argv[])
 
     if_verbose("-- maxfds is: " + to_string(maxfds) + " --");
 
-    auto start = chrono::high_resolution_clock::now();
-
     while (true)
     {
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds, botnet_servers) + " --");
@@ -890,7 +890,7 @@ int main(int argc, char *argv[])
         if_verbose("-- selecting --");
 
         // Look at sockets and see which ones have something to be read()
-        int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, NULL);
+        int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, &keepalive_timeout);
 
         if_verbose("-- read sockets after select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
 
@@ -898,6 +898,10 @@ int main(int argc, char *argv[])
         {
             perror("select failed - closing down\n");
             break;
+        }else if( n == 0){
+            // select timed out
+            // we send keepalive
+            send_keep_alive_messages(botnet_servers);
         }
 
         if_verbose("-- outside if new_connections --");
@@ -940,17 +944,6 @@ int main(int argc, char *argv[])
                 deal_with_server_command(botnet_servers, botnet_server, open_sockets, maxfds);
                 n--;
             }
-        }
-
-        if_verbose("-- outside keepalive timecheck --");
-
-        // if time between start and end is bigger then 60 seconds then send keep alive
-        auto end = chrono::high_resolution_clock::now();
-        auto time_elapsed = chrono::duration_cast<chrono::seconds>(end - start);
-        if (time_elapsed.count() >= 60)
-        {
-            send_keep_alive_messages(botnet_servers);
-            start = chrono::high_resolution_clock::now();
         }
     }
 }
