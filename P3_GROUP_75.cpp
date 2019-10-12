@@ -735,7 +735,6 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             int socket = get_socket_from_id(botnet_servers, to_group_id);
 
             // store the message in the mailbox
-            // TODO: can this segfault?
             mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(command.arguments, 1)));
 
             // if we are directly connected to the group_id then send the message
@@ -752,20 +751,29 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         else if (command.command == "GETMSG")
         {
             if_verbose("-- Getting message for client --");
-            string group_id = command.arguments[0];
+            string message_owner_id = command.arguments[0]; // group id whos message we are trying to retrieve
 
-            map<string, vector<pair<string, string>>>::iterator it = mail_box.find(group_id);
-
-            string message;
-            if (it != mail_box.end())
+            // get from our own mailbox if we only specify one group_id
+            if (command.arguments.size() == 1)
             {
-                message = mail_box[group_id][0].second;
+                map<string, vector<pair<string, string>>>::iterator it = mail_box.find(message_owner_id);
+
+                string message;
+                if (it != mail_box.end())
+                {
+                    // TODO: retreive all messages
+                    message = mail_box[message_owner_id][0].second;
+                }
+                else
+                {
+                    message = "no message for this group_id";
+                }
+                send_and_log(clientSocket, message);
             }
             else
             {
-                message = "no message for this group_id";
+                // TODO: send get_msg to server, then for every send_msg we get we forward that to the client.
             }
-            send_and_log(clientSocket, message);
         }
         else if (command.command == "WHO")
         {
