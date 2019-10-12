@@ -1,9 +1,9 @@
 //
-// Simple chat server for TSAM-409
+// BotNet server for Computer Networking
 //
 // Command line: ./chat_server 4000
 //
-// Author: Jacky Mallett (jacky@ru.is)
+// Author: Þórður Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
 //
 #include <stdio.h>
 #include <errno.h>
@@ -535,8 +535,11 @@ string get_status_response(string to_group_id)
     {
         string server_id = pair.first;
         int message_count = pair.second.size();
-
-        return_str += "," + server_id + "," + to_string(message_count);
+        // According to Piazza, we don't include groups, that we have no messages for
+        if (message_count > 0)
+        {
+            return_str += "," + server_id + "," + to_string(message_count);
+        }
     }
     return_str.push_back(EOT);
     return return_str;
@@ -658,12 +661,9 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         }
         else
         {
-            // TODO: dont think we should have this because if they do the same then this will just be a back and forth loop
             // Not a valid command
-            string error("Command " + incoming_string + " not recognized");
+            string error("-- Unknown server command: " + incoming_string + " --");
             if_verbose(error);
-
-            send_and_log(botnet_server->sock, "Command not recognized, did you remember the SOH and EOT characters?");
         }
     }
 }
@@ -778,7 +778,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
                 // if we are connected to the server
                 if (socket != -1)
                 {
-                    // TODO: forward this to the client 
+                    // TODO: forward this to the client
                     Command get_msg_command = Command();
                     get_msg_command.command = "GET_MSG";
                     get_msg_command.arguments.push_back(message_owner_id);

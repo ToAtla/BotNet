@@ -1,3 +1,10 @@
+//
+// BotNet client for Computer Networking
+//
+// Command line: ./client <server_ip> <server_port>
+//
+// Author: Þórður Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
+//
 #include <sys/socket.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -17,7 +24,7 @@ string get_timestamp(){
 int main(int argc, char *argv[])
 {
 
-    string hardcoded_string = "CONNECTTO,130.208.243.61,4015";
+    string hardcoded_string = "CONNECTTO,130.208.243.61,4003";
     // user arguments should be exactly 3, the ip address of the server and the port number
     if (argc != 3)
     {
