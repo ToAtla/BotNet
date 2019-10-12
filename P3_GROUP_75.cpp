@@ -25,6 +25,7 @@
 #include <sstream>
 #include <map>
 #include <chrono>
+#include <utility> // std::pair
 
 using namespace std;
 
@@ -36,10 +37,10 @@ string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
 int OUR_PORTNR;
 int OUR_IP;
-bool VERBOSE = false;
-char SOH = 1;                         // beg symbol
-char EOT = 4;                         // end symbol
-map<string, vector<string>> mail_box; // maps group ids to  their stored messages
+bool VERBOSE = true;
+char SOH = 1;                                       // beg symbol
+char EOT = 4;                                       // end symbol
+map<string, vector<pair<string, string>>> mail_box; // maps group ids to a pair of the sender and the stored message
 
 class Botnet_server
 {
@@ -118,6 +119,39 @@ void if_verbose(string text)
              << endl;
     }
 }
+
+string reconstruct_message_from_vector(const vector<string> &container, int start_index)
+{
+    string return_str = "";
+    for (unsigned int i = start_index; i < container.size(); i++)
+    {
+        return_str += container[i];
+    }
+    return return_str;
+}
+
+string fd_set_to_string(const fd_set &socketset, int maxfds, map<int, Botnet_server *> &botnet_servers)
+{
+    string return_str = "";
+    for (int i = 0; i <= maxfds; i++)
+    {
+        if (FD_ISSET(i, &socketset))
+        {
+            map<int, Botnet_server *>::iterator it = botnet_servers.find(i);
+
+            if (it != botnet_servers.end())
+            {
+                return_str += to_string(i) + " -> " + botnet_servers[i]->group_id + ", ";
+            }
+            else
+            {
+                return_str += to_string(i) + ", ";
+            }
+        }
+    }
+    return return_str;
+}
+
 /**
  * Returns the current local time of the form
  * Fri Oct 11 16:56:47 2019
@@ -238,7 +272,8 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
     maxfds = max(maxfds, clientSocket);
     FD_SET(clientSocket, &open_sockets);
 
-    printf("client connected successfully\n");
+    cout << "client connected successfully on socket: " << to_string(clientSocket) << endl;
+    if_verbose("-- maxfds is: " + to_string(maxfds) + " --");
 }
 
 /*
@@ -358,7 +393,7 @@ void send_list_servers_cmd(int socketfd)
 */
 int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
 {
-    if_verbose("inside connect_to_botnet_server");
+    if_verbose("-- inside connect_to_botnet_server --");
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd < 0)
     {
@@ -375,16 +410,19 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
     // connect to server
     if (connect(socketfd, (struct sockaddr *)&server_socket_addr, sizeof(server_socket_addr)) < 0)
     {
-        if_verbose("inside botnet connection error");
+        if_verbose("--inside botnet connection error--");
         perror("Failed to connect");
-        exit(0);
+        return -1;
     }
-    if_verbose("attemtping to add to botnet server list");
+    if_verbose("--attemtping to add to botnet server list--");
 
     // send LISTSERVERS command to learn the server id.
     send_list_servers_cmd(socketfd);
 
     botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
+
+    if_verbose("-- server added to list: " + botnet_servers[socketfd]->to_string() + " --");
+    if_verbose("-- socket added to  open_socekts: " + to_string(socketfd) + " --");
 
     maxfds = max(maxfds, socketfd);
     FD_SET(socketfd, &open_sockets);
@@ -395,11 +433,12 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
 * Accepts incoming connection.
 * Adds socket to botnet_server map
 */
-void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers)
+void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers)
 {
     struct sockaddr_in server_addr;
     socklen_t server_addr_len;
 
+    if_verbose("--inside new_connections--");
     int server_socket = accept(listenSocket, (struct sockaddr *)&server_addr,
                                &server_addr_len);
 
@@ -419,7 +458,7 @@ void new_connections(int listenSocket, int maxfds, fd_set &open_sockets, map<int
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
         botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
 
-        if_verbose("after new connection this is the stored server: " + botnet_servers[server_socket]->to_string());
+        if_verbose("-- after new connection this is the stored server: " + botnet_servers[server_socket]->to_string() + " --");
 
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
@@ -449,6 +488,7 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, 
 
     // And remove from the list of open sockets.
     FD_CLR(botnet_server_sock, &open_sockets);
+    close(botnet_server_sock);
 }
 
 /*
@@ -465,7 +505,7 @@ string get_message_type(string message)
 
 string get_connected_servers(const map<int, Botnet_server *> botnet_servers)
 {
-    if_verbose("inside get_connected_servers");
+    if_verbose("-- inside get_connected_servers --");
     string message = "";
     message.push_back(SOH);
     message += "SERVERS,";
@@ -485,11 +525,32 @@ string get_connected_servers(const map<int, Botnet_server *> botnet_servers)
     return message;
 }
 
+string get_status_response(string to_group_id)
+{
+    string return_str;
+
+    return_str.push_back(SOH);
+    return_str += "STATUSRESP," + OUR_GROUP_ID + "," + to_group_id;
+    for (auto const &pair : mail_box)
+    {
+        string server_id = pair.first;
+        int message_count = pair.second.size();
+
+        return_str += "," + server_id + "," + to_string(message_count);
+    }
+    return_str.push_back(EOT);
+    return return_str;
+}
+
 // TODO: add timeout and if we reach buffersize+ then we drop the ignore the message and move on
 void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_server *botnet_server, fd_set &open_sockets, int &maxfds)
 {
+
+    if_verbose("-- inside deal_with_server_command --");
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
+
+    if_verbose("-- receiving from server: " + botnet_server->to_string() + " --");
 
     int byteCount = recv(botnet_server->sock, buffer, sizeof(buffer), MSG_DONTWAIT);
     // if_verbose("after first receive in deal_with_server_command");
@@ -509,7 +570,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
 
         while (buffer[byteCount - 1] != EOT)
         {
-            if_verbose("inside while gathering response");
+            if_verbose("-- inside while gathering response --");
             byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
         }
         // remove EOT and SOH from buffer and convert to string.
@@ -521,7 +582,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         string message_type = get_message_type(incoming_string);
         if (message_type == "SERVERS")
         {
-            if_verbose("inside SERVERS if");
+            if_verbose("-- inside SERVERS if --");
             // but the received servers into a more organized form
             vector<Botnet_server> servers;
             servers_response_to_vector(incoming_string, servers);
@@ -531,25 +592,69 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             botnet_server->ip_address = servers[0].ip_address;
             botnet_server->portnr = servers[0].portnr;
 
-            if_verbose("server that is sending message: " + botnet_server->to_string());
             //TODO: kannski reyna að tengjast helling af fólki hér automatically
         }
         else if (message_type == "LISTSERVERS")
         {
-            if_verbose("inside LISTSERVERS if");
+            if_verbose("-- inside LISTSERVERS if --");
             Command command = Command(incoming_string);
             botnet_server->group_id = command.arguments[0];
             string server_list = get_connected_servers(botnet_servers);
             send_and_log(botnet_server->sock, server_list);
         }
+        //  TODO: untested
         else if (message_type == "SEND_MSG")
         {
-            Command send_msg_command = Command(incoming_string);
-            cout << "Message recieved FROM " + send_msg_command.arguments[1] + " TO " + send_msg_command.arguments[2] + " MSG: " + send_msg_command.arguments[3] << endl;
+            Command send_msg_command = Command(incoming_string);                                     // parse the incoming string
+            string from_group_id = send_msg_command.arguments[0];                                    // group who message is from
+            string to_group_id = send_msg_command.arguments[1];                                      // group who message is to
+            string message_content = reconstruct_message_from_vector(send_msg_command.arguments, 2); // if there were commas in message then we need to reconstruct.
+            if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
+
+            mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
+        }
+        // TODO: untested
+        else if (message_type == "GET_MSG")
+        {
+            Command get_message_command = Command(incoming_string);        // parse incoming string
+            string to_group_id = get_message_command.arguments[0];         // id of the group whos message is for
+            vector<pair<string, string>> messages = mail_box[to_group_id]; // list of the stored messages for the group
+
+            // construct command to send and then for each message send to server.
+            Command send_msg_command = Command();
+            send_msg_command.command = "SEND_MSG";
+            for (unsigned int i = 0; i < messages.size(); i++)
+            {
+                send_msg_command.arguments.push_back(messages[i].first);  // who the message is from
+                send_msg_command.arguments.push_back(to_group_id);        // who the message is for
+                send_msg_command.arguments.push_back(messages[i].second); // message
+
+                send_and_log(botnet_server->sock, send_msg_command.to_string());
+            }
         }
         else if (message_type == "KEEPALIVE")
         {
-            send_and_log(botnet_server->sock, "Keepalive confirmed, thanks for the update");
+            // TODO: do something here
+            if_verbose("-- received keep alive --");
+        }
+        // TODO: untested
+        else if (message_type == "LEAVE")
+        {
+            close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+        }
+        // TODO: untested
+        else if (message_type == "STATUSREQ")
+        {
+            Command command = Command(incoming_string);
+            string from_group = command.arguments[0];
+            string status_response = get_status_response(from_group);
+            send_and_log(botnet_server->sock, status_response);
+        }
+        else if (message_type == "STATUSRESP")
+        {
+            cout << incoming_string << endl;
+
+            // TODO: maybe automate getting messages here.
         }
         else
         {
@@ -557,16 +662,32 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             // Not a valid command
             string error("Command " + incoming_string + " not recognized");
             if_verbose(error);
+
             send_and_log(botnet_server->sock, "Command not recognized, did you remember the SOH and EOT characters?");
         }
     }
+}
+
+/*
+* iterate through botnet list and return the socket the matches the id.
+*/
+int get_socket_from_id(const map<int, Botnet_server *> &botnet_servers, string server_id)
+{
+    for (auto const &pair : botnet_servers)
+    {
+        if (server_id == pair.second->group_id)
+        {
+            return pair.first;
+        }
+    }
+    return -1; // if id doesnt exist in list
 }
 
 void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
 {
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
-    if_verbose("Dealing with client command");
+    if_verbose("-- Dealing with client command --");
     // recv() == 0 means client has closed connection
     int byteCount = recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT);
     if (byteCount == 0)
@@ -586,7 +707,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         //  TODO: handle if we already have 5 connections
         if (command.command == "CONNECTTO")
         {
-            if_verbose("Received CONNECTTO command from client");
+            if_verbose("-- Received CONNECTTO command from client --");
             string ip = command.arguments[0];
             int port = stoi(command.arguments[1]);
 
@@ -601,28 +722,59 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         }
         else if (command.command == "LISTSERVERS")
         {
-            if_verbose("Listing servers for client");
+            if_verbose("-- Listing servers for client --");
             string server_list = get_connected_servers(botnet_servers);
             send_and_log(clientSocket, server_list);
         }
-        else if (command.command == "SEND_MSG")
+        // TODO: untested
+        else if (command.command == "SENDMSG")
         {
-            if_verbose("Sending message from client");
-            send_and_log(clientSocket, "Sending message - not implemented");
+            if_verbose("-- Sending message from client --");
+
+            string to_group_id = command.arguments[0];
+            int socket = get_socket_from_id(botnet_servers, to_group_id);
+
+            // store the message in the mailbox
+            // TODO: can this segfault?
+            mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(command.arguments, 1)));
+
+            // if we are directly connected to the group_id then send the message
+            if (socket != -1)
+            {
+                // change the command so it fits SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
+                command.command = "SEND_MSG";
+                command.arguments.insert(command.arguments.begin(), OUR_GROUP_ID);
+
+                send_and_log(socket, command.to_string());
+            }
         }
-        else if (command.command == "GET_MSG")
+        // TODO: untested
+        else if (command.command == "GETMSG")
         {
-            if_verbose("Getting message for client");
-            send_and_log(clientSocket, "Getting message - not implemented");
+            if_verbose("-- Getting message for client --");
+            string group_id = command.arguments[0];
+
+            map<string, vector<pair<string, string>>>::iterator it = mail_box.find(group_id);
+
+            string message;
+            if (it != mail_box.end())
+            {
+                message = mail_box[group_id][0].second;
+            }
+            else
+            {
+                message = "no message for this group_id";
+            }
+            send_and_log(clientSocket, message);
         }
         else if (command.command == "WHO")
         {
-            if_verbose("Listing parallel servers for client");
+            if_verbose("-- Listing parallel servers for client --");
             send_and_log(clientSocket, get_parallel_server());
         }
         else
         {
-            if_verbose("Non recognized client command recieved");
+            if_verbose("-- Non recognized client command recieved --");
             send_and_log(clientSocket, "Sorry, I don't recognize that commmand");
         }
     }
@@ -639,7 +791,8 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
         Botnet_server *botnet_server = pair.second;
 
         // if the group_id is not in the mailbox then just send message count = 0.
-        map<string, vector<string>>::iterator it = mail_box.find(botnet_server->group_id);
+        map<string, vector<std::pair<string, string>>>::iterator it = mail_box.find(botnet_server->group_id);
+
         if (it != mail_box.end())
         {
             int message_count = mail_box[botnet_server->group_id].size();
@@ -695,21 +848,39 @@ int main(int argc, char *argv[])
         if_verbose("Connected to botnet server");
         send_and_log(clientSock, "Connected to indicated server");
     }
+    else
+    {
+        //  TODO: maybe have this in a loop so if the initial client connection string is wrong then we dont have to restart everything?
+        send_and_log(clientSock, "Failed to connect to indicated server");
+        exit(0);
+    }
+
+    if_verbose("-- maxfds is: " + to_string(maxfds) + " --");
 
     auto start = chrono::high_resolution_clock::now();
+
     while (true)
     {
+        if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds, botnet_servers) + " --");
         // Get modifiable copy of readSockets
         read_sockets = except_sockets = open_sockets;
 
+        if_verbose("-- read sockets before select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
+
+        if_verbose("-- selecting --");
+
         // Look at sockets and see which ones have something to be read()
         int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, NULL);
+
+        if_verbose("-- read sockets after select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
 
         if (n < 0)
         {
             perror("select failed - closing down\n");
             break;
         }
+
+        if_verbose("-- outside if new_connections --");
 
         // if there is an incoming connection and we have room for more connections.
         if (FD_ISSET(listenSocket, &read_sockets))
@@ -723,10 +894,13 @@ int main(int argc, char *argv[])
             }
             else
             {
+                // TODO: should we be doing this, also if you do this then we will need to add SOH and EOT, right?
                 // Can't accept
                 send_and_log(listenSocket, "Sorry, this server is at full capacity");
             }
         }
+
+        if_verbose("-- outside if client commands --");
 
         if (FD_ISSET(clientSock, &read_sockets))
         {
@@ -738,6 +912,8 @@ int main(int argc, char *argv[])
         // for each connected server check for any incomming commands/messages
         for (auto const &pair : botnet_servers)
         {
+            if_verbose("-- outside if server commands --");
+
             Botnet_server *botnet_server = pair.second;
             if (FD_ISSET(botnet_server->sock, &read_sockets))
             {
@@ -745,6 +921,8 @@ int main(int argc, char *argv[])
                 n--;
             }
         }
+
+        if_verbose("-- outside keepalive timecheck --");
 
         // if time between start and end is bigger then 60 seconds then send keep alive
         auto end = chrono::high_resolution_clock::now();
