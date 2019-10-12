@@ -761,7 +761,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
                 string message;
                 if (it != mail_box.end())
                 {
-                    // TODO: retreive all messages
+                    // TODO: retreive all messages?
                     message = mail_box[message_owner_id][0].second;
                 }
                 else
@@ -770,9 +770,21 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
                 }
                 send_and_log(clientSocket, message);
             }
-            else
+            else if (command.arguments.size() == 2)
             {
-                // TODO: send get_msg to server, then for every send_msg we get we forward that to the client.
+                string message_holder_id = command.arguments[1]; // group id of server we are trying to retreive message from
+                int socket = get_socket_from_id(botnet_servers, message_holder_id);
+
+                // if we are connected to the server
+                if (socket != -1)
+                {
+                    // TODO: forward this to the client 
+                    Command get_msg_command = Command();
+                    get_msg_command.command = "GET_MSG";
+                    get_msg_command.arguments.push_back(message_owner_id);
+
+                    send_and_log(socket, get_msg_command.to_string());
+                }
             }
         }
         else if (command.command == "WHO")

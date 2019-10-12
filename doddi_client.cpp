@@ -17,7 +17,7 @@ string get_timestamp(){
 int main(int argc, char *argv[])
 {
 
-    string hardcoded_string = "CONNECTTO,130.208.243.61,4020";
+    string hardcoded_string = "CONNECTTO,130.208.243.61,4015";
     // user arguments should be exactly 3, the ip address of the server and the port number
     if (argc != 3)
     {
