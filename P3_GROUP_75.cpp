@@ -802,6 +802,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
 
 void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
 {
+    // TODO: encapsulate in SOH EOT
     Command command = Command();
     command.command = "KEEPALIVE";
     command.arguments.push_back("0");
@@ -840,7 +841,6 @@ int main(int argc, char *argv[])
     int maxfds;                               // Passed to select() as max fd in set
     map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
     struct timeval keepalive_timeout;         // Time between keepalives
-    keepalive_timeout.tv_sec = 60;
 
     if (argc != 2)
     {
@@ -890,6 +890,7 @@ int main(int argc, char *argv[])
         if_verbose("-- selecting --");
 
         // Look at sockets and see which ones have something to be read()
+        keepalive_timeout.tv_sec = 60;
         int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, &keepalive_timeout);
 
         if_verbose("-- read sockets after select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
@@ -902,6 +903,7 @@ int main(int argc, char *argv[])
             // select timed out
             // we send keepalive
             send_keep_alive_messages(botnet_servers);
+            if_verbose("-- timeval seconds: " + keepalive_timeout.tv_sec + " --");
         }
 
         if_verbose("-- outside if new_connections --");
