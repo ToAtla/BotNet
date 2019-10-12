@@ -903,7 +903,9 @@ int main(int argc, char *argv[])
             // select timed out
             // we send keepalive
             send_keep_alive_messages(botnet_servers);
-            if_verbose("-- timeval seconds: " + keepalive_timeout.tv_sec + " --");
+
+            string message("-- timeval seconds: " + to_string(keepalive_timeout.tv_sec) + " --");
+            if_verbose(message);
         }
 
         if_verbose("-- outside if new_connections --");
