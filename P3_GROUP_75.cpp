@@ -122,6 +122,28 @@ void if_verbose(string text)
     }
 }
 
+/*
+* iterate through botnet list and return the socket the matches the id.
+*/
+int get_socket_from_id(const map<int, Botnet_server *> &botnet_servers, string server_id)
+{
+    for (auto const &pair : botnet_servers)
+    {
+        if (server_id == pair.second->group_id)
+        {
+            return pair.first;
+        }
+    }
+    return -1; // if id doesnt exist in list
+}
+
+bool in_mailbox(string group_id)
+{
+    map<string, vector<pair<string, string>>>::iterator it = mail_box.find(group_id);
+
+    return (it != mail_box.end());
+}
+
 string reconstruct_message_from_vector(const vector<string> &container, int start_index)
 {
     string return_str = "";
@@ -135,9 +157,7 @@ string reconstruct_message_from_vector(const vector<string> &container, int star
 string fd_set_to_string(const fd_set &socketset, int maxfds, map<int, Botnet_server *> &botnet_servers)
 {
     string return_str = "";
-    // TODO: we don't want to iterate through maxfds, because that's not an actual socket, right?
-    // TODO: therefore I changed <= to <
-    for (int i = 0; i < maxfds; i++)
+    for (int i = 0; i <= maxfds; i++)
     {
         if (FD_ISSET(i, &socketset))
         {
@@ -414,6 +434,44 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
     return 0;
 }
 
+void send_messages_from_mailbox(int socketfd, map<int, Botnet_server *> &botnet_servers)
+{
+    string message_owner = botnet_servers[socketfd]->group_id; // group id of message owner
+
+    map<string, vector<pair<string, string>>>::iterator it = mail_box.find(message_owner);
+
+    // construct the sending  message: SEND_MSG,<from_group_id>,<to_group_id>,<message content>
+    Message message = Message();
+    message.type = "SEND_MSG";
+    message.arguments.push_back("");
+    message.arguments.push_back(message_owner);
+    message.arguments.push_back("");
+
+    // if there are messages in the mailbox
+    if (it != mail_box.end())
+    {
+        vector<pair<string, string>> messages = mail_box[message_owner]; // messages that the message_owner owns
+
+        // send all messages in the mail box that are for the message_owner
+        for (unsigned int i = 0; i < messages.size(); i++)
+        {
+            pair<string, string> message_pair = messages[i];
+            message.arguments[0] = message_pair.first;
+            message.arguments[2] = message_pair.second;
+
+            send_and_log(socketfd, message);
+        }
+
+        // remove messages from mail_box since they have been delivered to their rightful place
+        mail_box.erase(message_owner);
+    }
+
+    // also send message from us to them.
+    message.arguments[0] = OUR_GROUP_ID;
+    message.arguments[2] = "Hello friend";
+    send_and_log(socketfd, message);
+}
+
 /*
 * Accepts incoming connection.
 * Adds socket to botnet_server map
@@ -438,6 +496,9 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
         // send LISTSERVERS command to learn the server id.
         send_list_servers_cmd(server_socket);
 
+        //TODO: multiple messages problem
+        //send_messages_from_mailbox(server_socket, botnet_servers);
+
         // TODO: havent been able to test if the port and ip extraction worked
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
@@ -456,8 +517,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
 
 void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers, int &maxfds)
 {
-
-    // TODO: Does this deletion make sense, to avoid leaking memory?
     delete botnet_servers[botnet_server_sock];
     // Remove server from the botnet server list
     botnet_servers.erase(botnet_server_sock);
@@ -497,30 +556,30 @@ string get_message_type(string message)
  */
 string get_local_address()
 {
-	char buffer[1024];
-	memset(buffer, 0, sizeof(buffer));
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
 
-	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
 
-	const char *kGoogleDnsIp = "8.8.8.8";
-	int dns_port = 53;
+    const char *kGoogleDnsIp = "8.8.8.8";
+    int dns_port = 53;
 
-	struct sockaddr_in serv;
+    struct sockaddr_in serv;
 
-	memset(&serv, 0, sizeof(serv));
-	serv.sin_family = AF_INET;
-	serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
-	serv.sin_port = htons(dns_port);
+    memset(&serv, 0, sizeof(serv));
+    serv.sin_family = AF_INET;
+    serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
+    serv.sin_port = htons(dns_port);
 
-	connect(sock, (const struct sockaddr *)&serv, sizeof(serv));
+    connect(sock, (const struct sockaddr *)&serv, sizeof(serv));
 
-	struct sockaddr_in name;
-	socklen_t namelen = sizeof(name);
-	getsockname(sock, (struct sockaddr *)&name, &namelen);
-	close(sock);
+    struct sockaddr_in name;
+    socklen_t namelen = sizeof(name);
+    getsockname(sock, (struct sockaddr *)&name, &namelen);
+    close(sock);
     const char *p = inet_ntop(AF_INET, &name.sin_addr, buffer, 100);
 
-	string address(p);
+    string address(p);
     return address;
 }
 
@@ -644,24 +703,58 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
 
             mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
+
+            if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
         }
         // TODO: untested
         else if (incoming_message.type == "GET_MSG")
         {
-            string to_group_id = incoming_message.arguments[0];            // id of the group whos message is for
-            vector<pair<string, string>> messages = mail_box[to_group_id]; // list of the stored messages for the group
+            string to_group_id = incoming_message.arguments[0]; // id of the group whos message is for
 
-            // construct command to send and then for each message send to server.
-            Message outgoing_message = Message();
-            outgoing_message.type = "SEND_MSG";
-            for (unsigned int i = 0; i < messages.size(); i++)
+            if (in_mailbox(to_group_id))
+            {
+                int message_count = mail_box[to_group_id].size();
+                pair<string, string> message_pair = mail_box[to_group_id][message_count - 1]; // newest message
+
+                // construct command to send and then for each message send to server.
+                Message outgoing_message = Message();
+                outgoing_message.type = "SEND_MSG";
+
+                outgoing_message.arguments.push_back(message_pair.first);  // who the message is from
+                outgoing_message.arguments.push_back(to_group_id);         // who the message is for
+                outgoing_message.arguments.push_back(message_pair.second); // message
+
+                send_and_log(botnet_server->sock, outgoing_message);
+
+                if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+
+                // if we are sending the message to its rightful server then remove message
+                // and if all messages are gone then remove from the mail_box
+                if (get_socket_from_id(botnet_servers, to_group_id) == botnet_server->sock)
+                {
+                    mail_box[to_group_id].pop_back();
+                    if (mail_box[to_group_id].size() == 0)
+                    {
+                        mail_box.erase(to_group_id);
+                    }
+                }
+            }
+            else
+            {
+                if_verbose("-- no messages for this group_id --");
+            }
+
+            // TODO: multiple message problem
+            /*for (unsigned int i = 0; i < messages.size(); i++)
             {
                 outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
                 outgoing_message.arguments.push_back(to_group_id);        // who the message is for
                 outgoing_message.arguments.push_back(messages[i].second); // message
 
                 send_and_log(botnet_server->sock, outgoing_message);
-            }
+
+                if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+            }*/
         }
         else if (incoming_message.type == "KEEPALIVE")
         {
@@ -699,21 +792,6 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
     }
 }
 
-/*
-* iterate through botnet list and return the socket the matches the id.
-*/
-int get_socket_from_id(const map<int, Botnet_server *> &botnet_servers, string server_id)
-{
-    for (auto const &pair : botnet_servers)
-    {
-        if (server_id == pair.second->group_id)
-        {
-            return pair.first;
-        }
-    }
-    return -1; // if id doesnt exist in list
-}
-
 void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
 {
     char buffer[BUFFERSIZE];
@@ -743,7 +821,8 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             int port = stoi(message.arguments[1]);
 
             // Cyclic check
-            if(port == OUR_PORTNR && ip == OUR_IP){
+            if (port == OUR_PORTNR && ip == OUR_IP)
+            {
                 Message success("FAILIURE,We can't connect to ourselves");
                 send_and_log(clientSocket, success);
                 return;
@@ -780,75 +859,64 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             Message report("SUCCESS,queried a remote server");
             send_and_log(clientSocket, report);
         }
-        // TODO: untested
         else if (message.type == "SENDMSG")
         {
             if_verbose("-- Sending message from client --");
 
             string to_group_id = message.arguments[0];
-            int socket = get_socket_from_id(botnet_servers, to_group_id);
 
-            // if we are directly connected to the group_id then send the message
-            if (socket != -1)
-            {
-                // change the command so it fits SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
-                message.type = "SEND_MSG";
-                message.arguments.insert(message.arguments.begin(), OUR_GROUP_ID);
-                send_and_log(socket, message);
+            // store the message in the mailbox
+            mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(message.arguments, 1)));
 
-                Message report("SUCCESS, we sent the message to a directly connected server");
-                send_and_log(clientSocket, report);
-            }else{
-                // store the message in the mailbox
-                mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(message.arguments, 1)));
-
-                Message report("SUCCESS, server not 1-hop away, message waits in mailbox");
-                send_and_log(clientSocket, report);
-            }
+            Message report("SUCCESS, message waits in mailbox");
+            send_and_log(clientSocket, report);
         }
-        // TODO: untested
         else if (message.type == "GETMSG")
         {
             if_verbose("-- Getting message for client --");
             string message_owner_id = message.arguments[0]; // group id whos message we are trying to retrieve
 
-            // get from our own mailbox if we only specify one group_id
-            if (message.arguments.size() == 1)
+            Message outgoing_message = Message();
+            outgoing_message.type = "SEND_MSG";
+            string outgoing_string = "";
+
+            // get from our own mailbox
+            // if there  is mail for the the message owner
+            if (in_mailbox(message_owner_id))
             {
-                map<string, vector<pair<string, string>>>::iterator it = mail_box.find(message_owner_id);
-
-                Message outgoing_message = Message();
-                outgoing_message.type = "SEND_MSG";
-                string outgoing_string = "";
-                if (it != mail_box.end())
-                {
-                    // TODO: retreive all messages?
-                    outgoing_string = mail_box[message_owner_id][0].second;
-                }
-                else
-                {
-                    outgoing_string = "no message for this group_id";
-                }
-                outgoing_message.arguments.push_back(outgoing_string);
-                send_and_log(clientSocket, outgoing_message);
+                // TODO: multiple message problem
+                outgoing_string = mail_box[message_owner_id][0].second;
             }
-            // TODO: I don't think it's feasable to query other servers automatically like this
-            else if (message.arguments.size() == 2)
+            else
             {
-                string message_holder_id = message.arguments[1]; // group id of server we are trying to retreive message from
-                int socket = get_socket_from_id(botnet_servers, message_holder_id);
-
-                // if we are connected to the server
-                if (socket != -1)
-                {
-                    // TODO: forward this to the client
-                    Message get_msg_command = Message();
-                    get_msg_command.type = "GET_MSG";
-                    get_msg_command.arguments.push_back(message_owner_id);
-
-                    send_and_log(socket, get_msg_command.to_string());
-                }
+                outgoing_string = "no message for this group_id";
             }
+            outgoing_message.arguments.push_back(outgoing_string);
+            send_and_log(clientSocket, outgoing_message);
+        }
+        // expect SEND_MSG,<from_group_id>,<to_group_id>,<socketfd>,<message content>
+        else if (message.type == "SEND_MSG")
+        {
+            int socketfd = stoi(message.arguments[2]);
+            message.arguments.erase(message.arguments.begin() + 2); // remove the socketfd from the message
+
+            send_and_log(socketfd, message);
+        }
+        // expect  GET_MSG,<GROUP_ID>,<socketfd>
+        else if (message.type == "GET_MSG")
+        {
+            int socketfd = stoi(message.arguments[1]);
+            message.arguments.erase(message.arguments.begin() + 1); // remove the socketfd from the message
+
+            send_and_log(socketfd, message);
+        }
+        // expect STATUSREQ,<from_group>,<socketfd>
+        else if (message.type == "STATUSREQ")
+        {
+            int socketfd = stoi(message.arguments[1]);
+            message.arguments.erase(message.arguments.begin() + 1); // remove the socketfd from the message
+
+            send_and_log(socketfd, message);
         }
         else if (message.type == "WHO")
         {
@@ -994,20 +1062,18 @@ int main(int argc, char *argv[])
         // if there is an incoming connection and we have room for more connections.
         if (FD_ISSET(listenSocket, &read_sockets))
         {
+            if_verbose("-- inside if new_connections --");
             // Check if we have room
             if (botnet_servers.size() < MAXCONNECTEDSERVERS)
             {
                 // accepts connection, maybe changes maxfds, add to botnet_servers
                 new_connections(listenSocket, maxfds, open_sockets, botnet_servers);
-                n--;
             }
             else
             {
-                // Can't accept
-                // TODO: should we be doing this?
-                Message sry_msg("ERROR,Sorry this server is at full capacity");
-                send_and_log(listenSocket, sry_msg);
+                if_verbose("-- the botnet is full --");
             }
+            n--;
         }
 
         if_verbose("-- outside if client commands --");
