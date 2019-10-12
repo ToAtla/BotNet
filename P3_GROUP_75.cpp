@@ -78,6 +78,8 @@ class Message
 public:
     string type;
     vector<string> arguments;
+    // TODO:    make the constructor robust and capable of
+    //          creating a message from a string containing SOH & EOT
     Message(string raw_message)
     {
         stringstream ss(raw_message);
@@ -133,7 +135,9 @@ string reconstruct_message_from_vector(const vector<string> &container, int star
 string fd_set_to_string(const fd_set &socketset, int maxfds, map<int, Botnet_server *> &botnet_servers)
 {
     string return_str = "";
-    for (int i = 0; i <= maxfds; i++)
+    // TODO: we don't want to iterate through maxfds, because that's not an actual socket, right?
+    // TODO: therefore I changed <= to <
+    for (int i = 0; i < maxfds; i++)
     {
         if (FD_ISSET(i, &socketset))
         {
@@ -452,6 +456,9 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
 
 void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers, int &maxfds)
 {
+
+    // TODO: Does this deletion make sense, to avoid leaking memory?
+    delete botnet_servers[botnet_server_sock];
     // Remove server from the botnet server list
     botnet_servers.erase(botnet_server_sock);
 
@@ -484,14 +491,46 @@ string get_message_type(string message)
     return type;
 }
 
+/**
+ * Returns the servers external IP address of the form 192.168.1.2
+ * Modified from: https://www.binarytides.com/tcp-syn-portscan-in-c-with-linux-sockets/
+ */
+string get_local_address()
+{
+	char buffer[1024];
+	memset(buffer, 0, sizeof(buffer));
+
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+	const char *kGoogleDnsIp = "8.8.8.8";
+	int dns_port = 53;
+
+	struct sockaddr_in serv;
+
+	memset(&serv, 0, sizeof(serv));
+	serv.sin_family = AF_INET;
+	serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
+	serv.sin_port = htons(dns_port);
+
+	connect(sock, (const struct sockaddr *)&serv, sizeof(serv));
+
+	struct sockaddr_in name;
+	socklen_t namelen = sizeof(name);
+	getsockname(sock, (struct sockaddr *)&name, &namelen);
+	close(sock);
+    const char *p = inet_ntop(AF_INET, &name.sin_addr, buffer, 100);
+
+	string address(p);
+    return address;
+}
+
 string get_connected_servers(const map<int, Botnet_server *> botnet_servers)
 {
     if_verbose("-- inside get_connected_servers --");
     string message = "";
     message += "SERVERS,";
 
-    //  TODO: have the ip dynamic like OUR_PORTNR
-    Botnet_server my_server = Botnet_server(-1, OUR_GROUP_ID, "130.208.243.61", OUR_PORTNR);
+    Botnet_server my_server = Botnet_server(-1, OUR_GROUP_ID, get_local_address(), OUR_PORTNR);
 
     message += my_server.to_string();
 
@@ -521,7 +560,9 @@ string get_status_response(string to_group_id)
     return return_str;
 }
 
-// TODO: add timeout and if we reach buffersize+ then we drop the ignore the message and move on
+/**
+ * Manages and replies to all commands sent from peer servers
+ */
 void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_server *botnet_server, fd_set &open_sockets, int &maxfds)
 {
 
@@ -545,12 +586,23 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
     // only triggers if there is something on the socket for us.
     else
     {
-        // continue to receive until we have a full message
-
+        auto start = chrono::high_resolution_clock::now();
+        auto end = chrono::high_resolution_clock::now();
+        auto time_elapsed = chrono::duration_cast<chrono::seconds>(end - start);
+        // continue to receive until we have a full message ending with EOT
         while (buffer[byteCount - 1] != EOT)
         {
-            if_verbose("-- inside while gathering response --");
+            // if_verbose("-- inside while gathering response --");
             byteCount += recv(botnet_server->sock, buffer + byteCount, sizeof(buffer) - byteCount, MSG_DONTWAIT);
+
+            end = chrono::high_resolution_clock::now();
+            time_elapsed = chrono::duration_cast<chrono::seconds>(end - start);
+
+            if (time_elapsed.count() > 4)
+            {
+                // Timeout, we ignore the command
+                return;
+            }
         }
         // remove EOT and SOH from buffer and convert to string.
         buffer[byteCount - 1] = '\0';
@@ -559,8 +611,9 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         log_incoming(incoming_string);
 
         // TODO: simplify with command class
-        string message_type = get_message_type(incoming_string);
-        if (message_type == "SERVERS")
+        Message incoming_message(incoming_string);
+
+        if (incoming_message.type == "SERVERS")
         {
             if_verbose("-- inside SERVERS if --");
             // but the received servers into a more organized form
@@ -574,66 +627,67 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
 
             //TODO: kannski reyna að tengjast helling af fólki hér automatically
         }
-        else if (message_type == "LISTSERVERS")
+        else if (incoming_message.type == "LISTSERVERS")
         {
             if_verbose("-- inside LISTSERVERS if --");
-            Message message = Message(incoming_string);
-            botnet_server->group_id = message.arguments[0];
+            botnet_server->group_id = incoming_message.arguments[0];
+
             Message server_list_answer(get_connected_servers(botnet_servers));
             send_and_log(botnet_server->sock, server_list_answer);
         }
         //  TODO: untested
-        else if (message_type == "SEND_MSG")
+        else if (incoming_message.type == "SEND_MSG")
         {
-            Message send_msg_command = Message(incoming_string);                                     // parse the incoming string
-            string from_group_id = send_msg_command.arguments[0];                                    // group who message is from
-            string to_group_id = send_msg_command.arguments[1];                                      // group who message is to
-            string message_content = reconstruct_message_from_vector(send_msg_command.arguments, 2); // if there were commas in message then we need to reconstruct.
+            string from_group_id = incoming_message.arguments[0];                                    // group who message is from
+            string to_group_id = incoming_message.arguments[1];                                      // group who message is to
+            string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
             if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
 
             mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
         }
         // TODO: untested
-        else if (message_type == "GET_MSG")
+        else if (incoming_message.type == "GET_MSG")
         {
-            Message get_message_command = Message(incoming_string);        // parse incoming string
-            string to_group_id = get_message_command.arguments[0];         // id of the group whos message is for
+            string to_group_id = incoming_message.arguments[0];            // id of the group whos message is for
             vector<pair<string, string>> messages = mail_box[to_group_id]; // list of the stored messages for the group
 
             // construct command to send and then for each message send to server.
-            Message send_msg_command = Message();
-            send_msg_command.type = "SEND_MSG";
+            Message outgoing_message = Message();
+            outgoing_message.type = "SEND_MSG";
             for (unsigned int i = 0; i < messages.size(); i++)
             {
-                send_msg_command.arguments.push_back(messages[i].first);  // who the message is from
-                send_msg_command.arguments.push_back(to_group_id);        // who the message is for
-                send_msg_command.arguments.push_back(messages[i].second); // message
+                outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
+                outgoing_message.arguments.push_back(to_group_id);        // who the message is for
+                outgoing_message.arguments.push_back(messages[i].second); // message
 
-                send_and_log(botnet_server->sock, send_msg_command.to_string());
+                send_and_log(botnet_server->sock, outgoing_message);
             }
         }
-        else if (message_type == "KEEPALIVE")
+        else if (incoming_message.type == "KEEPALIVE")
         {
             // TODO: do something here
             if_verbose("-- received keep alive --");
+            if (atoi(incoming_message.arguments[0].c_str()) != 0)
+            {
+                if_verbose("-- This server has messages for us. Let's do something--");
+            }
         }
         // TODO: untested
-        else if (message_type == "LEAVE")
+        else if (incoming_message.type == "LEAVE")
         {
             close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
         }
         // TODO: untested
-        else if (message_type == "STATUSREQ")
+        else if (incoming_message.type == "STATUSREQ")
         {
-            Message message = Message(incoming_string);
-            string from_group = message.arguments[0];
-            Message status_response(get_status_response(from_group));
-            send_and_log(botnet_server->sock, status_response);
+            string from_group = incoming_message.arguments[0];
+
+            Message outgoing_message(get_status_response(from_group));
+            send_and_log(botnet_server->sock, outgoing_message);
         }
-        else if (message_type == "STATUSRESP")
+        else if (incoming_message.type == "STATUSRESP")
         {
             cout << incoming_string << endl;
-
             // TODO: maybe automate getting messages here.
         }
         else
@@ -715,6 +769,9 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             Message listservers_message(message);
             int group_socket = get_socket_from_id(botnet_servers, group);
             send_and_log(group_socket, message);
+
+            Message report("SUCCESS,queried a remote server");
+            send_and_log(clientSocket, report);
         }
         // TODO: untested
         else if (message.type == "SENDMSG")
@@ -724,17 +781,22 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             string to_group_id = message.arguments[0];
             int socket = get_socket_from_id(botnet_servers, to_group_id);
 
-            // store the message in the mailbox
-            mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(message.arguments, 1)));
-
             // if we are directly connected to the group_id then send the message
             if (socket != -1)
             {
                 // change the command so it fits SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
                 message.type = "SEND_MSG";
                 message.arguments.insert(message.arguments.begin(), OUR_GROUP_ID);
+                send_and_log(socket, message);
 
-                send_and_log(socket, message.to_string());
+                Message report("SUCCESS, we sent the message to a directly connected server");
+                send_and_log(clientSocket, report);
+            }else{
+                // store the message in the mailbox
+                mail_box[to_group_id].push_back(pair<string, string>(OUR_GROUP_ID, reconstruct_message_from_vector(message.arguments, 1)));
+
+                Message report("SUCCESS, server not 1-hop away, message waits in mailbox");
+                send_and_log(clientSocket, report);
             }
         }
         // TODO: untested
@@ -748,18 +810,22 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             {
                 map<string, vector<pair<string, string>>>::iterator it = mail_box.find(message_owner_id);
 
-                string message;
+                Message outgoing_message = Message();
+                outgoing_message.type = "SEND_MSG";
+                string outgoing_string = "";
                 if (it != mail_box.end())
                 {
                     // TODO: retreive all messages?
-                    message = mail_box[message_owner_id][0].second;
+                    outgoing_string = mail_box[message_owner_id][0].second;
                 }
                 else
                 {
-                    message = "no message for this group_id";
+                    outgoing_string = "no message for this group_id";
                 }
-                send_and_log(clientSocket, message);
+                outgoing_message.arguments.push_back(outgoing_string);
+                send_and_log(clientSocket, outgoing_message);
             }
+            // TODO: I don't think it's feasable to query other servers automatically like this
             else if (message.arguments.size() == 2)
             {
                 string message_holder_id = message.arguments[1]; // group id of server we are trying to retreive message from
@@ -780,7 +846,14 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         else if (message.type == "WHO")
         {
             if_verbose("-- Listing parallel servers for client --");
-            send_and_log(clientSocket, get_parallel_server());
+            Message parallel_stuff(get_parallel_server());
+            send_and_log(clientSocket, parallel_stuff);
+        }
+        else if (message.type == "CUSTOM")
+        {
+            // TODO: implement
+            Message report("SUCCESS,custom command recieved but not sent");
+            send_and_log(clientSocket, report);
         }
         else
         {
@@ -799,7 +872,6 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set 
 {
     Message message = Message();
     message.type = "KEEPALIVE";
-    // TODO: send actual number of waiting messages
     message.arguments.push_back("0");
 
     for (auto const &pair : botnet_servers)
@@ -827,7 +899,7 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set 
         }
         else
         {
-            if_verbose("-- Sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string() + " --");
+            if_verbose("-- Successfully sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string() + " --");
         }
     }
 }
