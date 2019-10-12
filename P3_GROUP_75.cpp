@@ -287,28 +287,18 @@ void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
 
     char server_connect_command[BUFFERSIZE];
     memset(server_connect_command, 0, BUFFERSIZE);
-    // while we dont have a valid connection command
-    while (true)
+
+    int byteCount = recv(clientSock, server_connect_command, BUFFERSIZE, 0);
+    if (byteCount < 0)
     {
-        int byteCount = recv(clientSock, server_connect_command, BUFFERSIZE, 0);
-        if (byteCount < 0)
-        {
-            cout << "failed to receive from client" << endl;
-            exit(0);
-        }
-        server_connect_command[BUFFERSIZE - 1] = '\0';
-
-        string string_command(server_connect_command); // char array to string
-
-        // TODO: use Command class to do this better
-        // extract ip and port
-        size_t firstCommaIndex = string_command.find(",", 0);
-        size_t secondCommaIndex = string_command.find(",", firstCommaIndex + 1);
-
-        outIp = string_command.substr(firstCommaIndex + 1, secondCommaIndex - firstCommaIndex - 1);
-        outPort = atoi(string_command.substr(secondCommaIndex + 1).c_str());
-        break;
+        cout << "failed to receive from client" << endl;
+        exit(0);
     }
+    server_connect_command[BUFFERSIZE - 1] = '\0';
+
+    Message connection_command(server_connect_command);
+    outIp = connection_command.arguments[0];
+    outPort = atoi(connection_command.arguments[1].c_str());
 }
 
 void split(string &str, vector<string> &cont, char delim = ' ')
@@ -715,6 +705,16 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             Message server_list_answer(get_connected_servers(botnet_servers));
             send_and_log(clientSocket, server_list_answer);
         }
+        else if(message.type == "LISTREMOTE"){
+            // The answer won't reach the client
+            string group = message.arguments[0];
+            if_verbose("-- Listing remote servers on " + group + " --");
+
+            string message = "LISTSERVERS," + OUR_GROUP_ID;
+            Message listservers_message(message);
+            int group_socket = get_socket_from_id(botnet_servers, group);
+            send_and_log(group_socket, message);
+        }
         // TODO: untested
         else if (message.type == "SENDMSG")
         {
@@ -790,10 +790,15 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
     }
 }
 
-void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
+/**
+ * Sends keepalive messages to each connected server
+ * disconnects a server if the keepalive does not reach them
+ */
+void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
 {
     Message message = Message();
     message.type = "KEEPALIVE";
+    // TODO: send actual number of waiting messages
     message.arguments.push_back("0");
 
     for (auto const &pair : botnet_servers)
@@ -813,10 +818,14 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers)
             message.arguments[0] = "0";
         }
 
-        // TODO: error handling
-        send_and_log(botnet_server->sock, message);
+       
+        if( send_and_log(botnet_server->sock, message) <= 0) {
+            string error("-- Keepalive message to " + botnet_server->group_id + " failed. Disconnecting them --");
+            if_verbose(error);
+            close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+        }
 
-        if_verbose("Sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string());
+        if_verbose("-- Sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string() + " --");
     }
 }
 
@@ -895,7 +904,7 @@ int main(int argc, char *argv[])
         {
             // select timed out
             // we send keepalive
-            send_keep_alive_messages(botnet_servers);
+            send_keep_alive_messages(botnet_servers, open_sockets, maxfds);
         }
 
         if_verbose("-- outside if new_connections --");

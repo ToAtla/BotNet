@@ -26,6 +26,7 @@ The server can process the following commands from ext_servers
 | LISTSERVERS,<FROM_GROUP_ID> | Sends back a list of ext_servers connect to the server | LISTSERVERS,GROUP_62 |
 | KEEPALIVE,<MSG_COUNT> | Maintains the connection between two directly connected servers, and indicates the number of messages waiting for the ext_server on the server| KEEPALIVE,0 |
 | GET_MSG,<GROUP_ID> | Gets a message for the given group | GET_MSG,GROUP_15 |
+| SEND_MSG,<FROM_GROUP_ID><TO_GROUP_ID>,<MESSAGE> | ????? | SEND_MSG,GROUP_17,GROUP_15,You are divisible by three |
 | LEAVE,<IP>,<PORT> | Disconnects from the specified server | LEAVE,130.208.243.4000 |
 
 ### Client
@@ -35,6 +36,7 @@ The server can process the following commands from the client
 | ------ | ------ |------ |
 | CONNECTTO,<IP>,<PORT> | Connects the server to the given ext_server | CONNECTTO,130.208.243.61,4000 |
 | LISTSERVERS | Displays the ext_servers connected to the server | LISTSERVERS |
-| SEND_MSG,<GROUP_ID>,<MSG> | Sends a message to the given group(ext_server) | SEND_MSG,GROUP_15,You Rock! |
-| GET_MSG,<GROUP_ID> | Displays the last message for the given group id | GET_MSG,GROUP_15 |
+| LISTREMOTE,<GROUP_ID>, | Displays the ext_servers connected to another ext_server | LISTREMOTE,P3_GROUP_13 |
+| SENDMSG,<GROUP_ID>,<MSG> | Sends a message to the given group(ext_server) | SEND_MSG,GROUP_15,You Rock! |
+| GETMSG,<GROUP_ID> | Displays the last message for the given group id | GET_MSG,GROUP_15 |
 | WHO | Displays all connected ext_servers | Example |
