@@ -705,7 +705,8 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             Message server_list_answer(get_connected_servers(botnet_servers));
             send_and_log(clientSocket, server_list_answer);
         }
-        else if(message.type == "LISTREMOTE"){
+        else if (message.type == "LISTREMOTE")
+        {
             // The answer won't reach the client
             string group = message.arguments[0];
             if_verbose("-- Listing remote servers on " + group + " --");
@@ -818,14 +819,16 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set 
             message.arguments[0] = "0";
         }
 
-       
-        if( send_and_log(botnet_server->sock, message) <= 0) {
+        if (send_and_log(botnet_server->sock, message) < 0)
+        {
             string error("-- Keepalive message to " + botnet_server->group_id + " failed. Disconnecting them --");
             if_verbose(error);
             close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
         }
-
-        if_verbose("-- Sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string() + " --");
+        else
+        {
+            if_verbose("-- Sent keepalive: " + message.to_string() + " to server " + botnet_server->to_string() + " --");
+        }
     }
 }
 
