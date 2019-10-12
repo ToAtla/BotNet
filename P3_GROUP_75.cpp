@@ -36,7 +36,7 @@ using namespace std;
 string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
 int OUR_PORTNR;
-int OUR_IP;
+string OUR_IP;
 bool VERBOSE = true;
 char SOH = 1;                                       // beg symbol
 char EOT = 4;                                       // end symbol
@@ -530,7 +530,7 @@ string get_connected_servers(const map<int, Botnet_server *> botnet_servers)
     string message = "";
     message += "SERVERS,";
 
-    Botnet_server my_server = Botnet_server(-1, OUR_GROUP_ID, get_local_address(), OUR_PORTNR);
+    Botnet_server my_server = Botnet_server(-1, OUR_GROUP_ID, OUR_IP, OUR_PORTNR);
 
     message += my_server.to_string();
 
@@ -742,6 +742,13 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             string ip = message.arguments[0];
             int port = stoi(message.arguments[1]);
 
+            // Cyclic check
+            if(port == OUR_PORTNR && ip == OUR_IP){
+                Message success("FAILIURE,We can't connect to ourselves");
+                send_and_log(clientSocket, success);
+                return;
+            }
+
             if (connect_to_botnet_server(ip, port, botnet_servers, maxfds, open_sockets) == 0)
             {
                 Message success("SUCCESS,Connected successfully to indicated server");
@@ -749,7 +756,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             }
             else
             {
-                Message failure("FAILURE,Connected successfully to indicated server");
+                Message failure("FAILURE,Connection attmept failed");
                 send_and_log(clientSocket, failure);
             }
         }
@@ -914,7 +921,7 @@ int main(int argc, char *argv[])
     int maxfds;                               // Passed to select() as max fd in set
     map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
     struct timeval keepalive_timeout;         // Time between keepalives
-
+    OUR_IP = get_local_address();
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
