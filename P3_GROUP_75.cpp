@@ -55,7 +55,7 @@ public:
     string ip_address;
     int portnr;
     bool welcomed;
-    chrono::high_resolution_clock::time_point connected_time;        
+    chrono::high_resolution_clock::time_point connected_time;
 
     Botnet_server(int socket)
     {
@@ -642,26 +642,32 @@ string get_message_type(string message)
     return type;
 }
 
-void disconnect_oldest(fd_set &open_sockets, int &maxfds){
-    
+void disconnect_oldest(fd_set &open_sockets, int &maxfds)
+{
+
     // always keep some
-    if(botnet_servers.size() < 2){
+    if (botnet_servers.size() <= 4)
+    {
         if_verbose("-- Too few connected to disconnect --");
         return;
     }
-    long longest_duration = 0;
+    long longest_duration = 600;
     int socket_for_disconnection = -1;
     for (auto const &pair : botnet_servers)
     {
         auto now = chrono::high_resolution_clock::now();
         auto time_elapsed = chrono::duration_cast<chrono::seconds>(now - pair.second->connected_time);
-        if(time_elapsed.count() > longest_duration){
+        if (time_elapsed.count() > longest_duration)
+        {
             longest_duration = time_elapsed.count();
             socket_for_disconnection = pair.second->sock;
         }
     }
-    if_verbose("-- disconnecting oldest --");
-    close_socket(socket_for_disconnection, open_sockets, maxfds);
+    if (socket_for_disconnection != -1)
+    {
+        if_verbose("-- disconnecting oldest --");
+        close_socket(socket_for_disconnection, open_sockets, maxfds);
+    }
 }
 /**
  * Sends a welcome message to all not-yet-welcomed newcomers
@@ -1201,7 +1207,7 @@ int main(int argc, char *argv[])
     {
         welcome_newcomers();
 
-        disconnect_oldest(open_sockets, maxfds);
+        //disconnect_oldest(open_sockets, maxfds);
 
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
