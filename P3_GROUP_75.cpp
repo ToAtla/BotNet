@@ -507,6 +507,10 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, int &maxfds, fd_
     // send LISTSERVERS command to learn the server id.
     send_list_servers_cmd(socketfd);
 
+    sleep(500);
+
+    send_status_request(socketfd);
+
     if_verbose("-- server added to list: " + botnet_servers[socketfd]->to_string() + " --");
     if_verbose("-- socket added to  open_socekts: " + to_string(socketfd) + " --");
 
