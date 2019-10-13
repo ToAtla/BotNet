@@ -149,7 +149,7 @@ string reconstruct_message_from_vector(const vector<string> &container, int star
     string return_str = "";
     for (unsigned int i = start_index; i < container.size(); i++)
     {
-        return_str += container[i];
+        return_str += "," + container[i];
     }
     return return_str;
 }
@@ -619,6 +619,22 @@ string get_status_response(string to_group_id)
     return return_str;
 }
 
+vector<string> split_to_multiple_commands(char *buffer)
+{
+    vector<string> bla;
+    // split on <EOT> and then remove the first char since it is supposed to be SOH
+    /*stringstream ss(buffer);
+    getline(ss, type, ',');
+
+    string argument;
+    while (getline(ss, argument, ','))
+    {
+        arguments.push_back(argument);
+    }*/
+
+    return bla;
+}
+
 /**
  * Manages and replies to all commands sent from peer servers
  */
@@ -663,7 +679,8 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
                 return;
             }
         }
-        // remove EOT and SOH from buffer and convert to string.
+
+
         buffer[byteCount - 1] = '\0';
         string incoming_string(buffer);
         incoming_string = incoming_string.substr(1);
@@ -680,9 +697,9 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             servers_response_to_vector(incoming_string, servers);
 
             // update the the values int the botnet list, this is mostly for the group_id.
-            botnet_server->group_id = servers[0].group_id;
-            botnet_server->ip_address = servers[0].ip_address;
-            botnet_server->portnr = servers[0].portnr;
+            //botnet_server->group_id = servers[0].group_id;
+            //botnet_server->ip_address = servers[0].ip_address;
+            //botnet_server->portnr = servers[0].portnr;
 
             //TODO: kannski reyna að tengjast helling af fólki hér automatically
         }
@@ -894,40 +911,32 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
             outgoing_message.arguments.push_back(outgoing_string);
             send_and_log(clientSocket, outgoing_message);
         }
-        // expect SEND_MSG,<from_group_id>,<to_group_id>,<socketfd>,<message content>
-        else if (message.type == "SEND_MSG")
-        {
-            int socketfd = stoi(message.arguments[2]);
-            message.arguments.erase(message.arguments.begin() + 2); // remove the socketfd from the message
-
-            send_and_log(socketfd, message);
-        }
-        // expect  GET_MSG,<GROUP_ID>,<socketfd>
-        else if (message.type == "GET_MSG")
-        {
-            int socketfd = stoi(message.arguments[1]);
-            message.arguments.erase(message.arguments.begin() + 1); // remove the socketfd from the message
-
-            send_and_log(socketfd, message);
-        }
-        // expect STATUSREQ,<from_group>,<socketfd>
-        else if (message.type == "STATUSREQ")
-        {
-            int socketfd = stoi(message.arguments[1]);
-            message.arguments.erase(message.arguments.begin() + 1); // remove the socketfd from the message
-
-            send_and_log(socketfd, message);
-        }
         else if (message.type == "WHO")
         {
             if_verbose("-- Listing parallel servers for client --");
             Message parallel_stuff(get_parallel_server());
             send_and_log(clientSocket, parallel_stuff);
         }
+        // expected format: CUSTOM,<GROUP_ID>,<server command>
         else if (message.type == "CUSTOM")
         {
-            // TODO: implement
-            Message report("SUCCESS,custom command recieved but not sent");
+
+            string group_id = message.arguments[0];
+
+            int communicationSocket = get_socket_from_id(botnet_servers, group_id);
+            if (communicationSocket != -1)
+            {
+                if_verbose("-- sending custom command to server --");
+                string server_command = reconstruct_message_from_vector(message.arguments, 1);
+                Message new_message = Message(server_command);
+
+                send_and_log(communicationSocket, new_message);
+            }
+            else
+            {
+                if_verbose("-- no such group connected --");
+            }
+            Message report("SUCCESS,custom command");
             send_and_log(clientSocket, report);
         }
         else
