@@ -74,6 +74,8 @@ public:
     ~Botnet_server() {} // Virtual destructor defined for base class
 };
 
+map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information
+
 class Message
 {
 public:
@@ -131,7 +133,7 @@ void sleep(int milliseconds)
 /*
 * iterate through botnet list and return the socket the matches the id.
 */
-int get_socket_from_id(const map<int, Botnet_server *> &botnet_servers, string server_id)
+int get_socket_from_id(string server_id)
 {
     for (auto const &pair : botnet_servers)
     {
@@ -160,7 +162,7 @@ string reconstruct_message_from_vector(const vector<string> &container, int star
     return return_str;
 }
 
-string fd_set_to_string(const fd_set &socketset, int maxfds, map<int, Botnet_server *> &botnet_servers)
+string fd_set_to_string(const fd_set &socketset, int maxfds)
 {
     string return_str = "";
     for (int i = 0; i <= maxfds; i++)
@@ -402,7 +404,7 @@ void send_list_servers_cmd(int socketfd)
 * connects to server and returns socket file descriptor
 * incrament botner-server connection count
 */
-int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_server *> &botnet_servers, int &maxfds, fd_set &open_sockets)
+int connect_to_botnet_server(string botnet_ip, int botnet_port, int &maxfds, fd_set &open_sockets)
 {
     if_verbose("-- inside connect_to_botnet_server --");
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -427,10 +429,10 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
     }
     if_verbose("--attemtping to add to botnet server list--");
 
+    botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
+
     // send LISTSERVERS command to learn the server id.
     send_list_servers_cmd(socketfd);
-
-    botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
 
     if_verbose("-- server added to list: " + botnet_servers[socketfd]->to_string() + " --");
     if_verbose("-- socket added to  open_socekts: " + to_string(socketfd) + " --");
@@ -440,7 +442,7 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, map<int, Botnet_
     return 0;
 }
 
-void send_messages_from_mailbox(int socketfd, map<int, Botnet_server *> &botnet_servers)
+void send_messages_from_mailbox(int socketfd)
 {
     string message_owner = botnet_servers[socketfd]->group_id; // group id of message owner
 
@@ -494,7 +496,7 @@ int send_welcome_message(int socket, string to_group_id)
 * Accepts incoming connection.
 * Adds socket to botnet_server map
 */
-void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers)
+void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
 {
     struct sockaddr_in server_addr;
     socklen_t server_addr_len;
@@ -511,9 +513,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
     {
         FD_SET(server_socket, &open_sockets);
 
-        // send LISTSERVERS command to learn the server id.
-        send_list_servers_cmd(server_socket);
-
         //TODO: multiple messages problem
         //send_messages_from_mailbox(server_socket, botnet_servers);
 
@@ -521,6 +520,9 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
         botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
+
+        // send LISTSERVERS command to learn the server id.
+        send_list_servers_cmd(server_socket);
 
         if_verbose("-- after new connection this is the stored server: " + botnet_servers[server_socket]->to_string() + " --");
 
@@ -533,7 +535,7 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets, map<in
 // Close a botnet server's connection, remove it from the botnet_server list, and
 // tidy up select sockets afterwards.
 
-void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, map<int, Botnet_server *> &botnet_servers, int &maxfds)
+void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, int &maxfds)
 {
     delete botnet_servers[botnet_server_sock];
     // Remove server from the botnet server list
@@ -601,7 +603,7 @@ string get_local_address()
     return address;
 }
 
-string get_connected_servers(const map<int, Botnet_server *> botnet_servers)
+string get_connected_servers()
 {
     if_verbose("-- inside get_connected_servers --");
     string message = "";
@@ -658,7 +660,7 @@ vector<string> split_to_multiple_commands(char *buffer)
 /**
  * Manages and replies to all commands sent from peer servers
  */
-void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_server *botnet_server, fd_set &open_sockets, int &maxfds)
+void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets, int &maxfds)
 {
 
     if_verbose("-- inside deal_with_server_command --");
@@ -675,7 +677,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         printf("Botnet server closed connection: %d", botnet_server->sock);
         close(botnet_server->sock);
 
-        close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+        close_botnet_server(botnet_server->sock, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -708,12 +710,6 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         {
             string incoming_string = incoming_strings[i];
 
-            //update the the values int the botnet list, this is mostly for the group_id.
-            if (botnet_server->group_id == STANDIN_GROUPID)
-            {
-                botnet_server->group_id = servers[0].group_id;
-            }
-
             send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
             log_incoming(incoming_string);
@@ -728,6 +724,12 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
                 vector<Botnet_server> servers;
                 servers_response_to_vector(incoming_string, servers);
 
+                //update the the values int the botnet list, this is mostly for the group_id.
+                if (botnet_server->group_id == STANDIN_GROUPID)
+                {
+                    botnet_server->group_id = servers[0].group_id;
+                }
+                
                 // update the the values int the botnet list, this is mostly for the group_id.
                 //botnet_server->group_id = servers[0].group_id;
                 //botnet_server->ip_address = servers[0].ip_address;
@@ -740,7 +742,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
                 if_verbose("-- inside LISTSERVERS if --");
                 botnet_server->group_id = incoming_message.arguments[0];
 
-                Message server_list_answer(get_connected_servers(botnet_servers));
+                Message server_list_answer(get_connected_servers());
                 send_and_log(botnet_server->sock, server_list_answer);
             }
             //  TODO: untested
@@ -779,7 +781,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
 
                     // if we are sending the message to its rightful server then remove message
                     // and if all messages are gone then remove from the mail_box
-                    if (get_socket_from_id(botnet_servers, to_group_id) == botnet_server->sock)
+                    if (get_socket_from_id(to_group_id) == botnet_server->sock)
                     {
                         mail_box[to_group_id].pop_back();
                         if (mail_box[to_group_id].size() == 0)
@@ -817,7 +819,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
             // TODO: untested
             else if (incoming_message.type == "LEAVE")
             {
-                close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+                close_botnet_server(botnet_server->sock, open_sockets, maxfds);
             }
             // TODO: untested
             else if (incoming_message.type == "STATUSREQ")
@@ -842,7 +844,7 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
     }
 }
 
-void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
+void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxfds)
 {
     char buffer[BUFFERSIZE];
     memset(buffer, 0, BUFFERSIZE);
@@ -878,7 +880,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
                 return;
             }
 
-            if (connect_to_botnet_server(ip, port, botnet_servers, maxfds, open_sockets) == 0)
+            if (connect_to_botnet_server(ip, port, maxfds, open_sockets) == 0)
             {
                 Message success("SUCCESS,Connected successfully to indicated server");
                 send_and_log(clientSocket, success);
@@ -892,7 +894,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
         else if (message.type == "LISTSERVERS")
         {
             if_verbose("-- Listing servers for client --");
-            Message server_list_answer(get_connected_servers(botnet_servers));
+            Message server_list_answer(get_connected_servers());
             send_and_log(clientSocket, server_list_answer);
         }
         else if (message.type == "LISTREMOTE")
@@ -903,7 +905,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
 
             string message = "LISTSERVERS," + OUR_GROUP_ID;
             Message listservers_message(message);
-            int group_socket = get_socket_from_id(botnet_servers, group);
+            int group_socket = get_socket_from_id(group);
             send_and_log(group_socket, message);
 
             Message report("SUCCESS,queried a remote server");
@@ -956,7 +958,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
 
             string group_id = message.arguments[0];
 
-            int communicationSocket = get_socket_from_id(botnet_servers, group_id);
+            int communicationSocket = get_socket_from_id(group_id);
             if (communicationSocket != -1)
             {
                 if_verbose("-- sending custom command to server --");
@@ -985,7 +987,7 @@ void deal_with_client_command(int &clientSocket, map<int, Botnet_server *> &botn
  * Sends keepalive messages to each connected server
  * disconnects a server if the keepalive does not reach them
  */
-void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set &open_sockets, int &maxfds)
+void send_keep_alive_messages(fd_set &open_sockets, int &maxfds)
 {
     Message message = Message();
     message.type = "KEEPALIVE";
@@ -1012,7 +1014,7 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set 
         {
             string error("-- Keepalive message to " + botnet_server->group_id + " failed. Disconnecting them --");
             if_verbose(error);
-            close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+            close_botnet_server(botnet_server->sock, open_sockets, maxfds);
         }
         else
         {
@@ -1023,14 +1025,13 @@ void send_keep_alive_messages(map<int, Botnet_server *> &botnet_servers, fd_set 
 
 int main(int argc, char *argv[])
 {
-    int listenSocket;                         // Socket for connections to server
-    int clientSock;                           // Socket of connecting client
-    fd_set open_sockets;                      // Current open sockets
-    fd_set read_sockets;                      // Exception socket list
-    fd_set except_sockets;                    // Exception socket list
-    int maxfds;                               // Passed to select() as max fd in set
-    map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
-    struct timeval keepalive_timeout;         // Time between keepalives
+    int listenSocket;                 // Socket for connections to server
+    int clientSock;                   // Socket of connecting client
+    fd_set open_sockets;              // Current open sockets
+    fd_set read_sockets;              // Exception socket list
+    fd_set except_sockets;            // Exception socket list
+    int maxfds;                       // Passed to select() as max fd in set
+    struct timeval keepalive_timeout; // Time between keepalives
     OUR_IP = get_local_address();
     if (argc != 2)
     {
@@ -1055,7 +1056,7 @@ int main(int argc, char *argv[])
     if_verbose(to_string(botnet_server_port));
 
     // connect to botnet, maybe change maxfds, add to open_sockets, add to botnet_servers
-    if (connect_to_botnet_server(botnet_server_ip, botnet_server_port, botnet_servers, maxfds, open_sockets) == 0)
+    if (connect_to_botnet_server(botnet_server_ip, botnet_server_port, maxfds, open_sockets) == 0)
     {
         if_verbose("Connected to botnet server");
         Message success("SUCCESS,Connected to indicated server");
@@ -1073,11 +1074,11 @@ int main(int argc, char *argv[])
 
     while (true)
     {
-        if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds, botnet_servers) + " --");
+        if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
         read_sockets = except_sockets = open_sockets;
 
-        if_verbose("-- read sockets before select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
+        if_verbose("-- read sockets before select: " + fd_set_to_string(read_sockets, maxfds) + " --");
 
         if_verbose("-- selecting --");
 
@@ -1085,7 +1086,7 @@ int main(int argc, char *argv[])
         keepalive_timeout.tv_sec = 60;
         int n = select(maxfds + 1, &read_sockets, NULL, &except_sockets, &keepalive_timeout);
 
-        if_verbose("-- read sockets after select: " + fd_set_to_string(read_sockets, maxfds, botnet_servers) + " --");
+        if_verbose("-- read sockets after select: " + fd_set_to_string(read_sockets, maxfds) + " --");
 
         if (n < 0)
         {
@@ -1096,7 +1097,7 @@ int main(int argc, char *argv[])
         {
             // select timed out
             // we send keepalive
-            send_keep_alive_messages(botnet_servers, open_sockets, maxfds);
+            send_keep_alive_messages(open_sockets, maxfds);
         }
 
         if_verbose("-- outside if new_connections --");
@@ -1109,7 +1110,7 @@ int main(int argc, char *argv[])
             if (botnet_servers.size() < MAXCONNECTEDSERVERS)
             {
                 // accepts connection, maybe changes maxfds, add to botnet_servers
-                new_connections(listenSocket, maxfds, open_sockets, botnet_servers);
+                new_connections(listenSocket, maxfds, open_sockets);
             }
             else
             {
@@ -1123,7 +1124,7 @@ int main(int argc, char *argv[])
         if (FD_ISSET(clientSock, &read_sockets))
         {
             // check for commands from client
-            deal_with_client_command(clientSock, botnet_servers, open_sockets, maxfds);
+            deal_with_client_command(clientSock, open_sockets, maxfds);
             n--;
         }
 
@@ -1135,7 +1136,7 @@ int main(int argc, char *argv[])
             Botnet_server *botnet_server = pair.second;
             if (FD_ISSET(botnet_server->sock, &read_sockets))
             {
-                deal_with_server_command(botnet_servers, botnet_server, open_sockets, maxfds);
+                deal_with_server_command(botnet_server, open_sockets, maxfds);
                 n--;
             }
         }
