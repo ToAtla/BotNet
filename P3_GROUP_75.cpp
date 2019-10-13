@@ -587,17 +587,20 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
 // Close a botnet server's connection, remove it from the botnet_server list, and
 // tidy up select sockets afterwards.
 
-void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, int &maxfds)
+void close_socket(int socket, fd_set &open_sockets, int &maxfds)
 {
-    delete botnet_servers[botnet_server_sock];
-    // Remove server from the botnet server list
-    botnet_servers.erase(botnet_server_sock);
+    // are we closing a server socket?
+    if(botnet_servers.count(socket)){
+        delete botnet_servers[socket];
+        // Remove server from the botnet server list
+        botnet_servers.erase(socket);
+    }
 
-    // If this botnet-server's socket is maxfds then the next lowest
+    // If this server's socket is maxfds then the next lowest
     // one has to be determined. Socket fd's can be reused by the Kernel,
     // so there aren't any nice ways to do this.
 
-    if (maxfds == botnet_server_sock)
+    if (maxfds == socket)
     {
         for (auto const &p : botnet_servers)
         {
@@ -606,8 +609,8 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, int &maxf
     }
 
     // And remove from the list of open sockets.
-    FD_CLR(botnet_server_sock, &open_sockets);
-    close(botnet_server_sock);
+    FD_CLR(socket, &open_sockets);
+    close(socket);
 }
 
 /*
@@ -727,7 +730,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
     if (byteCount == 0)
     {
         printf("Botnet server closed connection: %d", botnet_server->sock);
-        close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+        close_socket(botnet_server->sock, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -868,7 +871,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             // TODO: untested
             else if (incoming_message.type == "LEAVE")
             {
-                close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+                close_socket(botnet_server->sock, open_sockets, maxfds);
             }
             // TODO: untested
             else if (incoming_message.type == "STATUSREQ")
@@ -902,9 +905,8 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
     int byteCount = recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT);
     if (byteCount == 0)
     {
-        printf("Client closed connection: %d", clientSocket);
-        close(clientSocket);
-        clientSocket = -1;
+        if_verbose("-- Client closed connection: " + to_string(clientSocket) + " --");
+        close_socket(clientSocket, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -1064,7 +1066,7 @@ void send_keep_alive_messages(fd_set &open_sockets, int &maxfds)
         {
             string error("-- Keepalive message to " + botnet_server->group_id + " failed. Disconnecting them --");
             if_verbose(error);
-            close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+            close_socket(botnet_server->sock, open_sockets, maxfds);
         }
         else
         {
