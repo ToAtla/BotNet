@@ -727,8 +727,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
     if (byteCount == 0)
     {
         printf("Botnet server closed connection: %d", botnet_server->sock);
-        close(botnet_server->sock);
-
         close_botnet_server(botnet_server->sock, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
@@ -1080,7 +1078,7 @@ int main(int argc, char *argv[])
     int listenSocket;                 // Socket for connections to server
     int clientSock;                   // Socket of connecting client
     fd_set open_sockets;              // Current open sockets
-    fd_set read_sockets;              // Exception socket list
+    fd_set read_sockets;              // Temp socket list for select
     fd_set except_sockets;            // Exception socket list
     int maxfds;                       // Passed to select() as max fd in set
     struct timeval keepalive_timeout; // Time between keepalives
@@ -1129,7 +1127,8 @@ int main(int argc, char *argv[])
     {
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
-        read_sockets = except_sockets = open_sockets;
+        read_sockets = open_sockets;
+        FD_ZERO(&except_sockets);
 
         if_verbose("-- read sockets before select: " + fd_set_to_string(read_sockets, maxfds) + " --");
 
