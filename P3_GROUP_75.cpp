@@ -352,7 +352,7 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
     CLIENT_PORT = client_info->sin_port;
     char temp_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(client_info->sin_addr), temp_ip, INET_ADDRSTRLEN);
-    CLIENT_IP = to_string(client_info->sin_addr.s_addr);
+    CLIENT_IP = temp_ip;
 
     if_verbose("-- client connected successfully on socket: " + to_string(clientSocket) + " --");
     if_verbose("-- client ip: " + CLIENT_IP + " client port: " + to_string(CLIENT_PORT) + " --");
