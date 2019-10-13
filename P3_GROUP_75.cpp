@@ -682,22 +682,20 @@ void disconnect_oldest(fd_set &open_sockets, int &maxfds)
 /**
  * Sends a welcome message to all not-yet-welcomed newcomers
  */
-void welcome_newcomers()
+void welcome_newcomers(int socketfd)
 {
-    for (auto const &pair : botnet_servers)
+    Botnet_server *server = botnet_servers[socketfd];
+    if (server->welcomed)
     {
-        if (!pair.second->welcomed)
-        {
-            if_verbose("-- Welcoming a newcomer --");
-            // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
-            Message message = Message();
-            message.type = "SEND_MSG";
-            message.arguments.push_back(OUR_GROUP_ID);                   // from group id
-            message.arguments.push_back(pair.second->group_id);          // to group id
-            message.arguments.push_back("Welcome to the party server!"); // message content
-            send_and_log(pair.second->sock, message);
-            pair.second->welcomed = true;
-        }
+        if_verbose("-- Welcoming a newcomer --");
+        // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
+        Message message = Message();
+        message.type = "SEND_MSG";
+        message.arguments.push_back(OUR_GROUP_ID);                   // from group id
+        message.arguments.push_back(server->group_id);               // to group id
+        message.arguments.push_back("Welcome to the party server!"); // message content
+        send_and_log(socketfd, message);
+        server->welcomed = true;
     }
 }
 
@@ -877,6 +875,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 if (botnet_server->group_id == STANDIN_GROUPID)
                 {
                     botnet_server->group_id = servers[0].group_id;
+                    welcome_newcomers(botnet_server->sock);
                 }
 
                 // TODO: ehv automation hér mögulega
@@ -885,6 +884,8 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             {
                 if_verbose("-- inside LISTSERVERS if --");
                 botnet_server->group_id = incoming_message.arguments[0];
+
+                welcome_newcomers(botnet_server->sock);
 
                 Message server_list_answer(get_connected_servers());
                 send_and_log(botnet_server->sock, server_list_answer);
@@ -1284,7 +1285,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        welcome_newcomers();
         disconnect_oldest(open_sockets, maxfds);
     }
 }
