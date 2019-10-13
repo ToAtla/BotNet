@@ -1010,6 +1010,7 @@ void send_keep_alive_messages(fd_set &open_sockets, int &maxfds)
 
 int main(int argc, char *argv[])
 {
+    botnet_servers = map<int, Botnet_server *>(); // Lookup table for botnet_server information
     int listenSocket;                         // Socket for connections to server
     int clientSock;                           // Socket of connecting client
     fd_set open_sockets;                      // Current open sockets
