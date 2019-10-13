@@ -688,6 +688,8 @@ int send_get_msg(int socketfd, string group_id)
     Message message = Message();
     message.type = "GET_MSG";
     message.arguments.push_back(group_id);
+
+    send_and_log(socketfd, message);
 }
 
 /**
@@ -865,6 +867,9 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
                 {
                     string group_id = message_count_for_servers[i].first;
                     send_get_msg(botnet_server->sock, group_id);
+
+                    // give receiving server time to breathe
+                    sleep(500);
                 }
             }
             else
