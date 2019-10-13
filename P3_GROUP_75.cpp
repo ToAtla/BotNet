@@ -158,8 +158,8 @@ bool in_mailbox(string group_id)
 
 string reconstruct_message_from_vector(const vector<string> &container, int start_index)
 {
-    string return_str = "";
-    for (unsigned int i = start_index; i < container.size(); i++)
+    string return_str = container[start_index];
+    for (unsigned int i = start_index + 1; i < container.size(); i++)
     {
         return_str += "," + container[i];
     }
@@ -205,7 +205,7 @@ void initialize_log_file()
     ifstream f(LOGFILE);
     if (!f.good())
     {
-        string top_header = "TIME             TO/FROM  GROUP_ID     IP ADDRESS         PORT    MESSAGE";
+        string top_header = "TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE";
         string sub_header = "-------------------------------------------------------------------------";
         ofstream outfile(LOGFILE);
         outfile << top_header << endl;
@@ -226,10 +226,10 @@ string make_log_string(const int source_socket, string message, int out){
 
     string rtn = get_timestamp() + "  ";
     if(out){
-        rtn = rtn + "TO     ";
+        rtn = rtn + "TO    >>";
     }
     else{
-        rtn = rtn + "FROM   ";
+        rtn = rtn + "FROM  <<";
     }
     // if the socket corresponds to a botnet_server
     if(botnet_servers.count(source_socket)){
@@ -1006,10 +1006,11 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             int communicationSocket = get_socket_from_id(group_id);
             if (communicationSocket != -1)
             {
-                if_verbose("-- sending custom command to server --");
+                
                 string server_command = reconstruct_message_from_vector(message.arguments, 1);
                 Message new_message = Message(server_command);
-
+                if_verbose("-- sending following custom command to server --");
+                if_verbose(server_command);
                 send_and_log(communicationSocket, new_message);
             }
             else
