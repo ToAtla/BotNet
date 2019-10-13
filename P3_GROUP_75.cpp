@@ -637,20 +637,22 @@ string get_status_response(string to_group_id)
     return return_str;
 }
 
+/*
+    takes in a pointer to a null-terminating char array and splits them on the EOT char
+    also removes the SOH char.
+*/
 vector<string> split_to_multiple_commands(char *buffer)
 {
-    vector<string> bla;
-    // split on <EOT> and then remove the first char since it is supposed to be SOH
-    /*stringstream ss(buffer);
-    getline(ss, type, ',');
+    vector<string> incoming_strings;
 
-    string argument;
-    while (getline(ss, argument, ','))
+    stringstream ss(buffer);
+    string incoming_string;
+    while (getline(ss, incoming_string, EOT))
     {
-        arguments.push_back(argument);
-    }*/
+        incoming_strings.push_back(incoming_string.substr(1));
+    }
 
-    return bla;
+    return incoming_strings;
 }
 
 /**
@@ -699,19 +701,12 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         }
 
         buffer[byteCount - 1] = '\0';
-        string incoming_string(buffer);
-        incoming_string = incoming_string.substr(1);
-        log_incoming(incoming_string);
+        vector<string> incoming_strings = split_to_multiple_commands(buffer);
 
-        // TODO: simplify with command class
-        Message incoming_message(incoming_string);
-
-        if (incoming_message.type == "SERVERS")
+        // go through all the commands that we got.
+        for (unsigned int i = 0; i < incoming_strings.size(); i++)
         {
-            if_verbose("-- inside SERVERS if --");
-            // but the received servers into a more organized form
-            vector<Botnet_server> servers;
-            servers_response_to_vector(incoming_string, servers);
+            string incoming_string = incoming_strings[i];
 
             //update the the values int the botnet list, this is mostly for the group_id.
             if (botnet_server->group_id == STANDIN_GROUPID)
@@ -721,68 +716,85 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
 
             send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
-            //TODO: kannski reyna að tengjast helling af fólki hér automatically
-        }
-        else if (incoming_message.type == "LISTSERVERS")
-        {
-            if_verbose("-- inside LISTSERVERS if --");
-            botnet_server->group_id = incoming_message.arguments[0];
+            log_incoming(incoming_string);
 
-            Message server_list_answer(get_connected_servers(botnet_servers));
-            send_and_log(botnet_server->sock, server_list_answer);
-        }
-        //  TODO: untested
-        else if (incoming_message.type == "SEND_MSG")
-        {
-            string from_group_id = incoming_message.arguments[0];                                    // group who message is from
-            string to_group_id = incoming_message.arguments[1];                                      // group who message is to
-            string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
-            if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
+            // TODO: simplify with command class
+            Message incoming_message(incoming_string);
 
-            mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
-
-            if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
-        }
-        // TODO: untested
-        else if (incoming_message.type == "GET_MSG")
-        {
-            string to_group_id = incoming_message.arguments[0]; // id of the group whos message is for
-
-            if (in_mailbox(to_group_id))
+            if (incoming_message.type == "SERVERS")
             {
-                int message_count = mail_box[to_group_id].size();
-                pair<string, string> message_pair = mail_box[to_group_id][message_count - 1]; // newest message
+                if_verbose("-- inside SERVERS if --");
+                // but the received servers into a more organized form
+                vector<Botnet_server> servers;
+                servers_response_to_vector(incoming_string, servers);
 
-                // construct command to send and then for each message send to server.
-                Message outgoing_message = Message();
-                outgoing_message.type = "SEND_MSG";
+                // update the the values int the botnet list, this is mostly for the group_id.
+                //botnet_server->group_id = servers[0].group_id;
+                //botnet_server->ip_address = servers[0].ip_address;
+                //botnet_server->portnr = servers[0].portnr;
 
-                outgoing_message.arguments.push_back(message_pair.first);  // who the message is from
-                outgoing_message.arguments.push_back(to_group_id);         // who the message is for
-                outgoing_message.arguments.push_back(message_pair.second); // message
+                //TODO: kannski reyna að tengjast helling af fólki hér automatically
+            }
+            else if (incoming_message.type == "LISTSERVERS")
+            {
+                if_verbose("-- inside LISTSERVERS if --");
+                botnet_server->group_id = incoming_message.arguments[0];
 
-                send_and_log(botnet_server->sock, outgoing_message);
+                Message server_list_answer(get_connected_servers(botnet_servers));
+                send_and_log(botnet_server->sock, server_list_answer);
+            }
+            //  TODO: untested
+            else if (incoming_message.type == "SEND_MSG")
+            {
+                string from_group_id = incoming_message.arguments[0];                                    // group who message is from
+                string to_group_id = incoming_message.arguments[1];                                      // group who message is to
+                string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
+                if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
 
-                if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+                mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
 
-                // if we are sending the message to its rightful server then remove message
-                // and if all messages are gone then remove from the mail_box
-                if (get_socket_from_id(botnet_servers, to_group_id) == botnet_server->sock)
+                if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
+            }
+            // TODO: untested
+            else if (incoming_message.type == "GET_MSG")
+            {
+                string to_group_id = incoming_message.arguments[0]; // id of the group whos message is for
+
+                if (in_mailbox(to_group_id))
                 {
-                    mail_box[to_group_id].pop_back();
-                    if (mail_box[to_group_id].size() == 0)
+                    int message_count = mail_box[to_group_id].size();
+                    pair<string, string> message_pair = mail_box[to_group_id][message_count - 1]; // newest message
+
+                    // construct command to send and then for each message send to server.
+                    Message outgoing_message = Message();
+                    outgoing_message.type = "SEND_MSG";
+
+                    outgoing_message.arguments.push_back(message_pair.first);  // who the message is from
+                    outgoing_message.arguments.push_back(to_group_id);         // who the message is for
+                    outgoing_message.arguments.push_back(message_pair.second); // message
+
+                    send_and_log(botnet_server->sock, outgoing_message);
+
+                    if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+
+                    // if we are sending the message to its rightful server then remove message
+                    // and if all messages are gone then remove from the mail_box
+                    if (get_socket_from_id(botnet_servers, to_group_id) == botnet_server->sock)
                     {
-                        mail_box.erase(to_group_id);
+                        mail_box[to_group_id].pop_back();
+                        if (mail_box[to_group_id].size() == 0)
+                        {
+                            mail_box.erase(to_group_id);
+                        }
                     }
                 }
-            }
-            else
-            {
-                if_verbose("-- no messages for this group_id --");
-            }
+                else
+                {
+                    if_verbose("-- no messages for this group_id --");
+                }
 
-            // TODO: multiple message problem
-            /*for (unsigned int i = 0; i < messages.size(); i++)
+                // TODO: multiple message problem
+                /*for (unsigned int i = 0; i < messages.size(); i++)
             {
                 outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
                 outgoing_message.arguments.push_back(to_group_id);        // who the message is for
@@ -792,39 +804,40 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
 
                 if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
             }*/
-        }
-        else if (incoming_message.type == "KEEPALIVE")
-        {
-            // TODO: do something here
-            if_verbose("-- received keep alive --");
-            if (atoi(incoming_message.arguments[0].c_str()) != 0)
-            {
-                if_verbose("-- This server has messages for us. Let's do something--");
             }
-        }
-        // TODO: untested
-        else if (incoming_message.type == "LEAVE")
-        {
-            close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
-        }
-        // TODO: untested
-        else if (incoming_message.type == "STATUSREQ")
-        {
-            string from_group = incoming_message.arguments[0];
+            else if (incoming_message.type == "KEEPALIVE")
+            {
+                // TODO: do something here
+                if_verbose("-- received keep alive --");
+                if (atoi(incoming_message.arguments[0].c_str()) != 0)
+                {
+                    if_verbose("-- This server has messages for us. Let's do something--");
+                }
+            }
+            // TODO: untested
+            else if (incoming_message.type == "LEAVE")
+            {
+                close_botnet_server(botnet_server->sock, open_sockets, botnet_servers, maxfds);
+            }
+            // TODO: untested
+            else if (incoming_message.type == "STATUSREQ")
+            {
+                string from_group = incoming_message.arguments[0];
 
-            Message outgoing_message(get_status_response(from_group));
-            send_and_log(botnet_server->sock, outgoing_message);
-        }
-        else if (incoming_message.type == "STATUSRESP")
-        {
-            cout << incoming_string << endl;
-            // TODO: maybe automate getting messages here.
-        }
-        else
-        {
-            // Not a valid command
-            string error("-- Unknown server message: " + incoming_string + " --");
-            if_verbose(error);
+                Message outgoing_message(get_status_response(from_group));
+                send_and_log(botnet_server->sock, outgoing_message);
+            }
+            else if (incoming_message.type == "STATUSRESP")
+            {
+                cout << incoming_string << endl;
+                // TODO: maybe automate getting messages here.
+            }
+            else
+            {
+                // Not a valid command
+                string error("-- Unknown server message: " + incoming_string + " --");
+                if_verbose(error);
+            }
         }
     }
 }
