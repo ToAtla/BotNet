@@ -795,9 +795,16 @@ vector<pair<string, int>> statusresp_to_vector(Message incoming_message)
     vector<pair<string, int>> return_vect;
     for (unsigned int i = 2; i < incoming_message.arguments.size(); i += 2)
     {
-        string group_id = incoming_message.arguments[i];
-        int message_count = stoi(incoming_message.arguments[i + 1]);
-        return_vect.push_back(pair<string, int>(group_id, message_count));
+        try
+        {
+            string group_id = incoming_message.arguments[i];
+            int message_count = stoi(incoming_message.arguments[i + 1]);
+            return_vect.push_back(pair<string, int>(group_id, message_count));
+        }
+        catch (int e)
+        {
+            if_verbose("-- failed to add to statusresp vector --");
+        }
     }
 
     return return_vect;
@@ -946,13 +953,19 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             }
             else if (incoming_message.type == "KEEPALIVE")
             {
-                // TODO: do something here
                 if_verbose("-- received keep alive --");
-                if (atoi(incoming_message.arguments[0].c_str()) != 0)
+                try
                 {
-                    if_verbose("-- This server has messages for us. Let's do something--");
+                    if (atoi(incoming_message.arguments[0].c_str()) != 0)
+                    {
+                        if_verbose("-- This server has messages for us. Let's do something--");
 
-                    send_get_msg(botnet_server->sock, OUR_GROUP_ID);
+                        send_get_msg(botnet_server->sock, OUR_GROUP_ID);
+                    }
+                }
+                catch (int e)
+                {
+                    if_verbose("-- keepalive error --");
                 }
             }
             // TODO: untested
