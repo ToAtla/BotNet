@@ -568,6 +568,8 @@ int send_status_request(int socket)
     return send_and_log(socket, message);
 }
 
+
+
 /*
 * Accepts incoming connection.
 * Adds socket to botnet_server map
