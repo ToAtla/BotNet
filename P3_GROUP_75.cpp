@@ -23,6 +23,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <map>
 #include <chrono>
 #include <utility> // std::pair
@@ -32,6 +33,7 @@ using namespace std;
 #define BACKLOG 5             // Allowed length of queue of waiting connections
 #define MAXCONNECTEDSERVERS 5 // Allowed amount of connected external servers
 #define BUFFERSIZE 1025
+#define FILENAME "logfile.txt"
 
 string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
@@ -185,17 +187,42 @@ string get_timestamp()
     time_t now = time(0);
     string time_string(ctime(&now));
     time_string.pop_back();
-    return time_string;
+    return time_string.substr(4, 20);
+}
+
+void initialize_log_file()
+{
+    ifstream f(FILENAME);
+    if (!f.good())
+    {
+        string top_header = "   TIME   |   GROUP_ID    | IP    | PORT  | DIRECTION | MESSAGE ";
+        string sub_header = "----------------------------------------------------------------";
+        ofstream outfile(FILENAME);
+        outfile << top_header << endl;
+        outfile << sub_header << endl;
+        outfile.close();
+    }
+}
+
+void append_to_log_file(string message)
+{
+    ofstream outfile(FILENAME);
+    outfile << message << endl;
+    outfile.close();
 }
 
 void log_incoming(string message)
 {
-    cout << get_timestamp() << " INCOMING    << " << message << endl;
+    string log_string = get_timestamp() + " INCOMING    << " + message;
+    cout << log_string << endl;
+    append_to_log_file(log_string);
 }
 
 void log_outgoing(string message)
 {
-    cout << get_timestamp() << " OUTGOING    >> " << message << endl;
+    string log_string = get_timestamp() + " OUTGOING    >> " + message;
+    cout << log_string << endl;
+    append_to_log_file(log_string);
 }
 
 /*
@@ -990,6 +1017,8 @@ int main(int argc, char *argv[])
     map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information // TODO: maybe move this to be global?
     struct timeval keepalive_timeout;         // Time between keepalives
     OUR_IP = get_local_address();
+    initialize_log_file();
+
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");

@@ -1,6 +1,7 @@
 # Project Specific
 client
 P3_GROUP_75
+logfile.txt
 
 
 # Created by https://www.gitignore.io/api/c++,linux,macos,visualstudiocode
