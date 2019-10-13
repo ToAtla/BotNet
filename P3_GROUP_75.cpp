@@ -452,6 +452,7 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, int &maxfds, fd_
     if_verbose("--attemtping to add to botnet server list--");
 
     // send LISTSERVERS command to learn the server id.
+    botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
     send_list_servers_cmd(socketfd);
 
     botnet_servers[socketfd] = new Botnet_server(socketfd, STANDIN_GROUPID, botnet_ip, botnet_port);
@@ -523,9 +524,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
     {
         FD_SET(server_socket, &open_sockets);
 
-        // send LISTSERVERS command to learn the server id.
-        send_list_servers_cmd(server_socket);
-
         //TODO: multiple messages problem
         //send_messages_from_mailbox(server_socket, botnet_servers);
 
@@ -533,6 +531,9 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
         botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
+        
+        // send LISTSERVERS command to learn the server id.
+        send_list_servers_cmd(server_socket);
 
         if_verbose("-- after new connection this is the stored server: " + botnet_servers[server_socket]->to_string() + " --");
 
