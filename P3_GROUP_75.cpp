@@ -86,6 +86,11 @@ public:
 
 map<int, Botnet_server *> botnet_servers; // Lookup table for per Client information
 
+/*
+* constructor takes in a string command/message and it is then parsed and transformed into a more easily handled form.
+* type is the type of the message/command for example LISTSERVERS
+* arguments are the things that follow the type.
+*/
 class Message
 {
 public:
@@ -156,6 +161,9 @@ int get_socket_from_id(string server_id)
     return -1; // if id doesnt exist in list
 }
 
+/*
+* if the group has messages in our mailbox then return true
+*/
 bool in_mailbox(string group_id)
 {
     map<string, vector<pair<string, string>>>::iterator it = mail_box.find(group_id);
@@ -163,6 +171,9 @@ bool in_mailbox(string group_id)
     return (it != mail_box.end());
 }
 
+/*
+* add the items together into a string, seperated by a comma
+*/
 string reconstruct_message_from_vector(const vector<string> &container, int start_index)
 {
     string return_str = container[start_index];
@@ -173,6 +184,9 @@ string reconstruct_message_from_vector(const vector<string> &container, int star
     return return_str;
 }
 
+/*
+* debuggin tool, takes and fd_set and transforms it into a readable string format 
+*/
 string fd_set_to_string(const fd_set &socketset, int maxfds)
 {
     string return_str = "";
@@ -396,6 +410,9 @@ void client_botnet_connect_cmd(int clientSock, string &outIp, int &outPort)
     outPort = atoi(connection_command.arguments[1].c_str());
 }
 
+/*
+* split string into a vector on a given delimeter
+*/
 void split(string &str, vector<string> &cont, char delim = ' ')
 {
     std::stringstream ss(str);
@@ -956,11 +973,14 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 if_verbose("-- received keep alive --");
                 try
                 {
-                    if (atoi(incoming_message.arguments[0].c_str()) != 0)
+                    if (incoming_message.arguments.size() == 0)
                     {
-                        if_verbose("-- This server has messages for us. Let's do something--");
+                        if (atoi(incoming_message.arguments[0].c_str()) != 0)
+                        {
+                            if_verbose("-- This server has messages for us. Let's do something--");
 
-                        send_get_msg(botnet_server->sock, OUR_GROUP_ID);
+                            send_get_msg(botnet_server->sock, OUR_GROUP_ID);
+                        }
                     }
                 }
                 catch (int e)
