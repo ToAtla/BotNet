@@ -947,6 +947,8 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 if (atoi(incoming_message.arguments[0].c_str()) != 0)
                 {
                     if_verbose("-- This server has messages for us. Let's do something--");
+
+                    send_get_msg(botnet_server->sock, OUR_GROUP_ID);
                 }
             }
             // TODO: untested
