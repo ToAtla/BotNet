@@ -750,8 +750,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
         {
             string incoming_string = incoming_strings[i];
 
-            send_welcome_message(botnet_server->sock, botnet_server->group_id);
-
             log_incoming(incoming_string);
 
             // TODO: simplify with command class
@@ -769,6 +767,8 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 {
                     botnet_server->group_id = servers[0].group_id;
                 }
+                send_welcome_message(botnet_server->sock, botnet_server->group_id);
+
                 // TODO: ehv automation hér mögulega
             }
             else if (incoming_message.type == "LISTSERVERS")
