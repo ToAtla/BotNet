@@ -685,7 +685,7 @@ void disconnect_oldest(fd_set &open_sockets, int &maxfds)
 void welcome_newcomers(int socketfd)
 {
     Botnet_server *server = botnet_servers[socketfd];
-    if (server->welcomed)
+    if (!server->welcomed)
     {
         if_verbose("-- Welcoming a newcomer --");
         // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
