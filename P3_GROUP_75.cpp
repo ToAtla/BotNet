@@ -46,8 +46,6 @@ bool VERBOSE = true;
 char SOH = 1;                                       // beg symbol
 char EOT = 4;                                       // end symbol
 map<string, vector<pair<string, string>>> mail_box; // maps group ids to a pair of the sender and the stored message
-bool CLIENT_DISCONNECTED = false;
-
 
 class Botnet_server
 {
@@ -987,7 +985,6 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
     {
         if_verbose("-- Client closed connection: " + to_string(clientSocket) + " --");
         close_socket(clientSocket, open_sockets, maxfds);
-        CLIENT_DISCONNECTED = true;
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -1261,14 +1258,11 @@ int main(int argc, char *argv[])
 
         if_verbose("-- outside if client commands --");
 
-        if (!CLIENT_DISCONNECTED)
+        if (FD_ISSET(clientSock, &read_sockets))
         {
-            if (FD_ISSET(clientSock, &read_sockets))
-            {
-                // check for commands from client
-                deal_with_client_command(clientSock, open_sockets, maxfds);
-                n--;
-            }
+            // check for commands from client
+            deal_with_client_command(clientSock, open_sockets, maxfds);
+            n--;
         }
 
         // for each connected server check for any incomming commands/messages
