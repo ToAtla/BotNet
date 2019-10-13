@@ -921,14 +921,20 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             //  TODO: untested
             else if (incoming_message.type == "SEND_MSG")
             {
-                string from_group_id = incoming_message.arguments[0];                                    // group who message is from
-                string to_group_id = incoming_message.arguments[1];                                      // group who message is to
-                string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
-                if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
+                if (incoming_message.arguments.size() > 3)
+                {
+                    string from_group_id = incoming_message.arguments[0];                                    // group who message is from
+                    string to_group_id = incoming_message.arguments[1];                                      // group who message is to
+                    string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
+                    if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
 
-                mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
+                    mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
 
-                if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
+                    if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
+                }
+                else {
+                    if_verbose("-- send_msg is on the wrong format --");
+                }
             }
             // TODO: untested
             else if (incoming_message.type == "GET_MSG")
