@@ -205,7 +205,7 @@ void initialize_log_file()
     ifstream f(LOGFILE);
     if (!f.good())
     {
-        string top_header = "        TIME        |   GROUP_ID  |    IP ADDRESS    | PORT |    DIRECTION     | MESSAGE ";
+        string top_header = "       TIME       TO/FROM  GROUP_ID      IP ADDRESS    PORT      MESSAGE";
         string sub_header = "---------------------------------------------------------------------------------------";
         ofstream outfile(LOGFILE);
         outfile << top_header << endl;
