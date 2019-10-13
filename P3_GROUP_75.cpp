@@ -137,6 +137,7 @@ void if_verbose(string text)
 
 void sleep(int milliseconds)
 {
+    if_verbose("-- sleeping zzz --");
     this_thread::sleep_for(chrono::milliseconds(milliseconds));
 }
 
@@ -463,6 +464,7 @@ void servers_response_to_vector(string servers_response, vector<Botnet_server> &
 
 void send_list_servers_cmd(int socketfd)
 {
+    if_verbose("-- inside send_list_servers_cmd --");
     Message message = Message();
     message.type = "LISTSERVERS";
     message.arguments.push_back(OUR_GROUP_ID);
@@ -515,6 +517,7 @@ int connect_to_botnet_server(string botnet_ip, int botnet_port, int &maxfds, fd_
 
 void send_messages_from_mailbox(int socketfd)
 {
+    if_verbose("-- inside send_messages_from_mailbox --");
     string message_owner = botnet_servers[socketfd]->group_id; // group id of message owner
 
     // if there are messages in the mailbox for the recipient.
@@ -553,6 +556,7 @@ void send_messages_from_mailbox(int socketfd)
 */
 int send_status_request(int socket)
 {
+    if_verbose("-- inside send_status_request --");
     Message message = Message();
     message.type = "STATUSREQ";
     message.arguments.push_back(OUR_GROUP_ID);
@@ -585,7 +589,7 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         send_list_servers_cmd(server_socket);
 
         // send the messages that belong to this server from our mailbox
-        send_messages_from_mailbox(server_socket);
+        // send_messages_from_mailbox(server_socket);
 
         // give receiving server a chance to breath.
         sleep(500);
@@ -597,9 +601,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
         botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
-
-        // send LISTSERVERS command to learn the server id.
-        send_list_servers_cmd(server_socket);
 
         if_verbose("-- after new connection this is the stored server: " + botnet_servers[server_socket]->to_string() + " --");
 
@@ -1214,10 +1215,6 @@ int main(int argc, char *argv[])
 
     while (true)
     {
-        welcome_newcomers();
-
-        //disconnect_oldest(open_sockets, maxfds);
-
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
         read_sockets = open_sockets;
@@ -1286,5 +1283,8 @@ int main(int argc, char *argv[])
                 n--;
             }
         }
+
+        welcome_newcomers();
+        disconnect_oldest(open_sockets, maxfds);
     }
 }
