@@ -508,23 +508,25 @@ void send_messages_from_mailbox(int socketfd)
 {
     string message_owner = botnet_servers[socketfd]->group_id; // group id of message owner
 
-    map<string, vector<pair<string, string>>>::iterator it = mail_box.find(message_owner);
-
-    // construct the sending  message: SEND_MSG,<from_group_id>,<to_group_id>,<message content>
-    Message message = Message();
-    message.type = "SEND_MSG";
-    message.arguments.push_back("");
-    message.arguments.push_back(message_owner);
-    message.arguments.push_back("");
-
-    // if there are messages in the mailbox
-    if (it != mail_box.end())
+    // if there are messages in the mailbox for the recipient.
+    if (in_mailbox(message_owner))
     {
+        // construct the sending  message: SEND_MSG,<from_group_id>,<to_group_id>,<message content>
+        Message message = Message();
+        message.type = "SEND_MSG";
+        message.arguments.push_back("");
+        message.arguments.push_back(message_owner);
+        message.arguments.push_back("");
+
         vector<pair<string, string>> messages = mail_box[message_owner]; // messages that the message_owner owns
 
         // send all messages in the mail box that are for the message_owner
         for (unsigned int i = 0; i < messages.size(); i++)
         {
+            // try to give the receiving server a change to breath
+            // if it isnt implementing splitting the receiving strings on SOH and EOT
+            sleep(500);
+
             pair<string, string> message_pair = messages[i];
             message.arguments[0] = message_pair.first;
             message.arguments[2] = message_pair.second;
@@ -535,11 +537,18 @@ void send_messages_from_mailbox(int socketfd)
         // remove messages from mail_box since they have been delivered to their rightful place
         mail_box.erase(message_owner);
     }
+}
 
-    // also send message from us to them.
-    message.arguments[0] = OUR_GROUP_ID;
-    message.arguments[2] = "Thanks for checking my mailbox!";
-    send_and_log(socketfd, message);
+/*
+* STATUSREQ,<FROM_GROUP>
+*/
+int send_status_request(int socket)
+{
+    Message message = Message();
+    message.type = "STATUSREQ";
+    message.arguments.push_back(OUR_GROUP_ID);
+
+    return send_and_log(socket, message);
 }
 
 /*
@@ -563,8 +572,17 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
     {
         FD_SET(server_socket, &open_sockets);
 
-        //TODO: multiple messages problem
-        //send_messages_from_mailbox(server_socket, botnet_servers);
+        // send LISTSERVERS command to learn the server id.
+        send_list_servers_cmd(server_socket);
+
+        // send the messages that belong to this server from our mailbox
+        send_messages_from_mailbox(server_socket);
+
+        // give receiving server a chance to breath.
+        sleep(500);
+
+        // send statusreq to be able to retrieve messages from this server.
+        send_status_request(server_socket);
 
         // TODO: havent been able to test if the port and ip extraction worked
         char ip_address[INET_ADDRSTRLEN];
@@ -754,6 +772,28 @@ vector<string> split_to_multiple_commands(char *buffer)
     return incoming_strings;
 }
 
+vector<pair<string, int>> statusresp_to_vector(Message incoming_message)
+{
+    vector<pair<string, int>> return_vect;
+    for (unsigned int i = 2; i < incoming_message.arguments.size(); i += 2)
+    {
+        string group_id = incoming_message.arguments[i];
+        int message_count = stoi(incoming_message.arguments[i + 1]);
+        return_vect.push_back(pair<string, int>(group_id, message_count));
+    }
+
+    return return_vect;
+}
+
+int send_get_msg(int socketfd, string group_id)
+{
+    Message message = Message();
+    message.type = "GET_MSG";
+    message.arguments.push_back(group_id);
+
+    return send_and_log(socketfd, message);
+}
+
 /**
  * Manages and replies to all commands sent from peer servers
  */
@@ -823,12 +863,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                     botnet_server->group_id = servers[0].group_id;
                 }
 
-                // update the the values int the botnet list, this is mostly for the group_id.
-                //botnet_server->group_id = servers[0].group_id;
-                //botnet_server->ip_address = servers[0].ip_address;
-                //botnet_server->portnr = servers[0].portnr;
-
-                //TODO: kannski reyna að tengjast helling af fólki hér automatically
+                // TODO: ehv automation hér mögulega
             }
             else if (incoming_message.type == "LISTSERVERS")
             {
@@ -857,48 +892,36 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
 
                 if (in_mailbox(to_group_id))
                 {
-                    int message_count = mail_box[to_group_id].size();
-                    pair<string, string> message_pair = mail_box[to_group_id][message_count - 1]; // newest message
+                    vector<pair<string, string>> messages = mail_box[to_group_id];
 
-                    // construct command to send and then for each message send to server.
-                    Message outgoing_message = Message();
-                    outgoing_message.type = "SEND_MSG";
+                    for (unsigned int i = 0; i < messages.size(); i++)
+                    {
+                        // construct command to send and then for each message send to server.
+                        Message outgoing_message = Message();
+                        outgoing_message.type = "SEND_MSG";
+                        outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
+                        outgoing_message.arguments.push_back(to_group_id);        // who the message is for
+                        outgoing_message.arguments.push_back(messages[i].second); // message
 
-                    outgoing_message.arguments.push_back(message_pair.first);  // who the message is from
-                    outgoing_message.arguments.push_back(to_group_id);         // who the message is for
-                    outgoing_message.arguments.push_back(message_pair.second); // message
+                        send_and_log(botnet_server->sock, outgoing_message);
 
-                    send_and_log(botnet_server->sock, outgoing_message);
+                        if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
 
-                    if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+                        // give server time to breathe
+                        sleep(500);
+                    }
 
-                    // if we are sending the message to its rightful server then remove message
+                    // if we are sending the messages to its rightful server then remove message
                     // and if all messages are gone then remove from the mail_box
                     if (get_socket_from_id(to_group_id) == botnet_server->sock)
                     {
-                        mail_box[to_group_id].pop_back();
-                        if (mail_box[to_group_id].size() == 0)
-                        {
-                            mail_box.erase(to_group_id);
-                        }
+                        mail_box.erase(to_group_id);
                     }
                 }
                 else
                 {
                     if_verbose("-- no messages for this group_id --");
                 }
-
-                // TODO: multiple message problem
-                /*for (unsigned int i = 0; i < messages.size(); i++)
-            {
-                outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
-                outgoing_message.arguments.push_back(to_group_id);        // who the message is for
-                outgoing_message.arguments.push_back(messages[i].second); // message
-
-                send_and_log(botnet_server->sock, outgoing_message);
-
-                if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
-            }*/
             }
             else if (incoming_message.type == "KEEPALIVE")
             {
@@ -924,8 +947,16 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             }
             else if (incoming_message.type == "STATUSRESP")
             {
-                cout << incoming_string << endl;
-                // TODO: maybe automate getting messages here.
+                vector<pair<string, int>> message_count_for_servers = statusresp_to_vector(incoming_message);
+
+                for (unsigned int i = 0; i < message_count_for_servers.size(); i++)
+                {
+                    string group_id = message_count_for_servers[i].first;
+                    send_get_msg(botnet_server->sock, group_id);
+
+                    // give receiving server time to breathe
+                    sleep(500);
+                }
             }
             else
             {
