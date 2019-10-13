@@ -205,8 +205,8 @@ void initialize_log_file()
     ifstream f(LOGFILE);
     if (!f.good())
     {
-        string top_header = "       TIME       TO/FROM  GROUP_ID      IP ADDRESS    PORT      MESSAGE";
-        string sub_header = "---------------------------------------------------------------------------------------";
+        string top_header = "TIME             TO/FROM  GROUP_ID     IP ADDRESS         PORT    MESSAGE";
+        string sub_header = "-------------------------------------------------------------------------";
         ofstream outfile(LOGFILE);
         outfile << top_header << endl;
         outfile << sub_header << endl;
@@ -226,10 +226,10 @@ string make_log_string(const int source_socket, string message, int out){
 
     string rtn = get_timestamp() + "  ";
     if(out){
-        rtn = rtn + "FROM   ";
+        rtn = rtn + "TO     ";
     }
     else{
-        rtn = rtn + "TO     ";
+        rtn = rtn + "FROM   ";
     }
     // if the socket corresponds to a botnet_server
     if(botnet_servers.count(source_socket)){
