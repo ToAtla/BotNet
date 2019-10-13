@@ -36,10 +36,10 @@ using namespace std;
 #define BUFFERSIZE 1025
 #define LOGFILE "logfile.txt"
 
-string OUR_GROUP_ID = "P3_GROUP_75";
-string STANDIN_GROUPID = "XXX";
-string CLIENT_IP;
-int CLIENT_PORT;
+string OUR_GROUP_ID     = "P3_GROUP_75";
+string STANDIN_GROUPID  = "UNKOWNGROUP";
+string CLIENT_IP = "111.222.333.444";
+int CLIENT_PORT = 1337;
 int OUR_PORTNR;
 string OUR_IP;
 bool VERBOSE = true;
@@ -224,20 +224,21 @@ void append_to_log_file(string message)
 
 string make_log_string(const int source_socket, string message, int out){
 
-    string rtn = get_timestamp();
+    string rtn = get_timestamp() + "  ";
+    if(out){
+        rtn = rtn + "FROM   ";
+    }
+    else{
+        rtn = rtn + "TO     ";
+    }
     // if the socket corresponds to a botnet_server
     if(botnet_servers.count(source_socket)){
         Botnet_server *sender = botnet_servers[source_socket];
-        rtn = rtn + "  " + sender->group_id + "  " + sender->ip_address + "  " + to_string(sender->portnr);
+        rtn = rtn + "  " + sender->group_id + "  " + sender->ip_address + "     " + to_string(sender->portnr) + "    " + message;
     }else{
-        rtn = rtn + "  " + "CLIENT" + "  " + CLIENT_IP + "  " + to_string(CLIENT_PORT);
+        rtn = rtn + "  " + "CLIENT     " + "  " + CLIENT_IP + "     " + to_string(CLIENT_PORT) + "    " + message;
     }
-    if(out){
-        rtn = rtn + " INCOMING    << " + message;
-    }
-    else{
-        rtn = rtn + " OUTGOING    >> " + message;
-    }
+    
     return rtn;
 }
 
@@ -1077,6 +1078,7 @@ int main(int argc, char *argv[])
     int maxfds;                       // Passed to select() as max fd in set
     struct timeval keepalive_timeout; // Time between keepalives
     OUR_IP = get_local_address();
+    initialize_log_file();
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
