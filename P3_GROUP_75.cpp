@@ -1144,6 +1144,7 @@ int main(int argc, char *argv[])
         if (n < 0)
         {
             perror("select failed - closing down\n");
+            fd_set_to_string(except_sockets, maxfds);
             break;
         }
         else if (n == 0)
