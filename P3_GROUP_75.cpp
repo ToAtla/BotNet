@@ -348,8 +348,14 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 
     maxfds = max(maxfds, clientSocket);
     FD_SET(clientSocket, &open_sockets);
+    struct sockaddr_in *client_info = (struct sockaddr_in*) &client_addr;
+    CLIENT_PORT = client_info->sin_port;
+    char temp_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_info->sin_addr), temp_ip, INET_ADDRSTRLEN);
+    CLIENT_IP = to_string(client_info->sin_addr.s_addr);
 
-    cout << "client connected successfully on socket: " << to_string(clientSocket) << endl;
+    if_verbose("-- client connected successfully on socket: " + to_string(clientSocket) + " --");
+    if_verbose("-- client ip: " + CLIENT_IP + " client port: " + to_string(CLIENT_PORT) + " --");
     if_verbose("-- maxfds is: " + to_string(maxfds) + " --");
 }
 
@@ -574,6 +580,7 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
         printf("botnet-server connected on server: %d\n", server_socket);
+        
     }
 }
 
@@ -755,7 +762,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
         {
             string incoming_string = incoming_strings[i];
 
-            send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
             log_incoming(botnet_server->sock, incoming_string);
 
@@ -1158,6 +1164,7 @@ int main(int argc, char *argv[])
             {
                 // accepts connection, maybe changes maxfds, add to botnet_servers
                 new_connections(listenSocket, maxfds, open_sockets);
+                
             }
             else
             {
