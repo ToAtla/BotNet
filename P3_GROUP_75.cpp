@@ -36,8 +36,8 @@ using namespace std;
 #define BUFFERSIZE 1025
 #define LOGFILE "logfile.txt"
 
-string OUR_GROUP_ID     = "P3_GROUP_75";
-string STANDIN_GROUPID  = "UNKOWNGROUP";
+string OUR_GROUP_ID = "P3_GROUP_75";
+string STANDIN_GROUPID = "UNKOWNGROUP";
 string CLIENT_IP = "111.222.333.444";
 int CLIENT_PORT = 1337;
 int OUR_PORTNR;
@@ -54,10 +54,14 @@ public:
     string group_id;
     string ip_address;
     int portnr;
+    bool welcomed;
+    chrono::high_resolution_clock::time_point connected_time;        
 
     Botnet_server(int socket)
     {
         this->sock = socket;
+        welcomed = false;
+        connected_time = chrono::high_resolution_clock::now();
     }
 
     Botnet_server(int socket, string group_id, string ip_address, int portnr)
@@ -66,6 +70,8 @@ public:
         this->group_id = group_id;
         this->portnr = portnr;
         this->ip_address = ip_address;
+        welcomed = false;
+        connected_time = chrono::high_resolution_clock::now();
     }
 
     string to_string()
@@ -197,7 +203,7 @@ string get_timestamp()
     time_t now = time(0);
     string time_string(ctime(&now));
     time_string.pop_back();
-    return time_string.substr(4,15);
+    return time_string.substr(4, 15);
 }
 
 void initialize_log_file()
@@ -221,24 +227,29 @@ void append_to_log_file(string message)
     outfile.close();
 }
 
-
-string make_log_string(const int source_socket, string message, int out){
+string make_log_string(const int source_socket, string message, int out)
+{
 
     string rtn = get_timestamp() + "  ";
-    if(out){
+    if (out)
+    {
         rtn = rtn + "TO    >>";
     }
-    else{
+    else
+    {
         rtn = rtn + "FROM  <<";
     }
     // if the socket corresponds to a botnet_server
-    if(botnet_servers.count(source_socket)){
+    if (botnet_servers.count(source_socket))
+    {
         Botnet_server *sender = botnet_servers[source_socket];
         rtn = rtn + "  " + sender->group_id + "  " + sender->ip_address + "     " + to_string(sender->portnr) + "    " + message;
-    }else{
+    }
+    else
+    {
         rtn = rtn + "  " + "CLIENT     " + "  " + CLIENT_IP + "     " + to_string(CLIENT_PORT) + "    " + message;
     }
-    
+
     return rtn;
 }
 
@@ -348,7 +359,7 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 
     maxfds = max(maxfds, clientSocket);
     FD_SET(clientSocket, &open_sockets);
-    struct sockaddr_in *client_info = (struct sockaddr_in*) &client_addr;
+    struct sockaddr_in *client_info = (struct sockaddr_in *)&client_addr;
     CLIENT_PORT = client_info->sin_port;
     char temp_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(client_info->sin_addr), temp_ip, INET_ADDRSTRLEN);
@@ -527,20 +538,8 @@ void send_messages_from_mailbox(int socketfd)
 
     // also send message from us to them.
     message.arguments[0] = OUR_GROUP_ID;
-    message.arguments[2] = "Hello friend";
+    message.arguments[2] = "Thanks for checking my mailbox!";
     send_and_log(socketfd, message);
-}
-
-int send_welcome_message(int socket, string to_group_id)
-{
-    // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
-    Message message = Message();
-    message.type = "SEND_MSG";
-    message.arguments.push_back(OUR_GROUP_ID);   // from group id
-    message.arguments.push_back(to_group_id);    // to group id
-    message.arguments.push_back("hello friend"); // message content
-
-    return send_and_log(socket, message);
 }
 
 /*
@@ -580,7 +579,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         // And update the maximum file descriptor
         maxfds = max(maxfds, server_socket);
         printf("botnet-server connected on server: %d\n", server_socket);
-        
     }
 }
 
@@ -590,7 +588,8 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
 void close_socket(int socket, fd_set &open_sockets, int &maxfds)
 {
     // are we closing a server socket?
-    if(botnet_servers.count(socket)){
+    if (botnet_servers.count(socket))
+    {
         delete botnet_servers[socket];
         // Remove server from the botnet server list
         botnet_servers.erase(socket);
@@ -623,6 +622,49 @@ string get_message_type(string message)
     getline(ss, type, ',');
 
     return type;
+}
+
+void disconnect_oldest(fd_set &open_sockets, int &maxfds){
+    
+    // always keep some
+    if(botnet_servers.size() < 2){
+        if_verbose("-- Too few connected to disconnect --");
+        return;
+    }
+    long longest_duration = 0;
+    int socket_for_disconnection = -1;
+    for (auto const &pair : botnet_servers)
+    {
+        auto now = chrono::high_resolution_clock::now();
+        auto time_elapsed = chrono::duration_cast<chrono::seconds>(now - pair.second->connected_time);
+        if(time_elapsed.count() > longest_duration){
+            longest_duration = time_elapsed.count();
+            socket_for_disconnection = pair.second->sock;
+        }
+    }
+    if_verbose("-- disconnecting oldest --");
+    close_socket(socket_for_disconnection, open_sockets, maxfds);
+}
+/**
+ * Sends a welcome message to all not-yet-welcomed newcomers
+ */
+void welcome_newcomers()
+{
+    for (auto const &pair : botnet_servers)
+    {
+        if (!pair.second->welcomed)
+        {
+            if_verbose("-- Welcoming a newcomer --");
+            // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
+            Message message = Message();
+            message.type = "SEND_MSG";
+            message.arguments.push_back(OUR_GROUP_ID);                   // from group id
+            message.arguments.push_back(pair.second->group_id);          // to group id
+            message.arguments.push_back("Welcome to the party server!"); // message content
+            send_and_log(pair.second->sock, message);
+            pair.second->welcomed = true;
+        }
+    }
 }
 
 /**
@@ -763,7 +805,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
         {
             string incoming_string = incoming_strings[i];
 
-
             log_incoming(botnet_server->sock, incoming_string);
 
             // TODO: simplify with command class
@@ -781,7 +822,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 {
                     botnet_server->group_id = servers[0].group_id;
                 }
-                
+
                 // update the the values int the botnet list, this is mostly for the group_id.
                 //botnet_server->group_id = servers[0].group_id;
                 //botnet_server->ip_address = servers[0].ip_address;
@@ -1012,7 +1053,7 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             int communicationSocket = get_socket_from_id(group_id);
             if (communicationSocket != -1)
             {
-                
+
                 string server_command = reconstruct_message_from_vector(message.arguments, 1);
                 Message new_message = Message(server_command);
                 if_verbose("-- sending following custom command to server --");
@@ -1127,6 +1168,10 @@ int main(int argc, char *argv[])
 
     while (true)
     {
+        welcome_newcomers();
+
+        disconnect_oldest(open_sockets, maxfds);
+
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
         read_sockets = open_sockets;
@@ -1166,7 +1211,6 @@ int main(int argc, char *argv[])
             {
                 // accepts connection, maybe changes maxfds, add to botnet_servers
                 new_connections(listenSocket, maxfds, open_sockets);
-                
             }
             else
             {
