@@ -23,6 +23,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <map>
 #include <chrono>
 #include <utility> // std::pair
@@ -33,9 +34,12 @@ using namespace std;
 #define BACKLOG 5             // Allowed length of queue of waiting connections
 #define MAXCONNECTEDSERVERS 5 // Allowed amount of connected external servers
 #define BUFFERSIZE 1025
+#define LOGFILE "logfile.txt"
 
 string OUR_GROUP_ID = "P3_GROUP_75";
 string STANDIN_GROUPID = "XXX";
+string CLIENT_IP;
+int CLIENT_PORT;
 int OUR_PORTNR;
 string OUR_IP;
 bool VERBOSE = true;
@@ -193,17 +197,55 @@ string get_timestamp()
     time_t now = time(0);
     string time_string(ctime(&now));
     time_string.pop_back();
-    return time_string;
+    return time_string.substr(4,15);
 }
 
-void log_incoming(string message)
+void initialize_log_file()
 {
-    cout << get_timestamp() << " INCOMING    << " << message << endl;
+    ifstream f(LOGFILE);
+    if (!f.good())
+    {
+        string top_header = "        TIME        |   GROUP_ID  |    IP ADDRESS    | PORT |    DIRECTION     | MESSAGE ";
+        string sub_header = "---------------------------------------------------------------------------------------";
+        ofstream outfile(LOGFILE);
+        outfile << top_header << endl;
+        outfile << sub_header << endl;
+        outfile.close();
+    }
 }
 
-void log_outgoing(string message)
+void append_to_log_file(string message)
 {
-    cout << get_timestamp() << " OUTGOING    >> " << message << endl;
+    ofstream outfile(LOGFILE, ios_base::app);
+    outfile << message << endl;
+    outfile.close();
+}
+
+
+string make_log_string(const int source_socket, string message, int out){
+
+    string rtn = get_timestamp();
+    // if the socket corresponds to a botnet_server
+    if(botnet_servers.count(source_socket)){
+        Botnet_server *sender = botnet_servers[source_socket];
+        rtn = rtn + "  " + sender->group_id + "  " + sender->ip_address + "  " + to_string(sender->portnr);
+    }else{
+        rtn = rtn + "  " + "CLIENT" + "  " + CLIENT_IP + "  " + to_string(CLIENT_PORT);
+    }
+    if(out){
+        rtn = rtn + " INCOMING    << " + message;
+    }
+    else{
+        rtn = rtn + " OUTGOING    >> " + message;
+    }
+    return rtn;
+}
+
+void log_incoming(const int source_socket, string message)
+{
+    string log_string = make_log_string(source_socket, message, 0);
+    cout << log_string << endl;
+    append_to_log_file(log_string);
 }
 
 /*
@@ -217,7 +259,9 @@ int send_and_log(const int communicationSocket, const Message message)
         cout << "Sending '" + message.to_string() + "' failed" << endl;
         return -1;
     }
-    log_outgoing(message.to_string());
+    string log_string = make_log_string(communicationSocket, message.to_string(), 1);
+    cout << log_string << endl;
+    append_to_log_file(log_string);
     return 0;
 }
 
@@ -712,7 +756,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
 
             send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
-            log_incoming(incoming_string);
+            log_incoming(botnet_server->sock, incoming_string);
 
             // TODO: simplify with command class
             Message incoming_message(incoming_string);
@@ -864,7 +908,7 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
         buffer[byteCount + 1] = '\0';
         Message message = Message(string(buffer));
 
-        log_incoming(message.to_string());
+        log_incoming(clientSocket, message.to_string());
         //  TODO: handle if we already have 5 connections
         if (message.type == "CONNECTTO")
         {
