@@ -23,6 +23,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <map>
 #include <chrono>
 #include <utility> // std::pair
@@ -33,9 +34,12 @@ using namespace std;
 #define BACKLOG 5             // Allowed length of queue of waiting connections
 #define MAXCONNECTEDSERVERS 5 // Allowed amount of connected external servers
 #define BUFFERSIZE 1025
+#define LOGFILE "logfile.txt"
 
 string OUR_GROUP_ID = "P3_GROUP_75";
-string STANDIN_GROUPID = "XXX";
+string STANDIN_GROUPID = "UNKOWNGROUP";
+string CLIENT_IP = "111.222.333.444";
+int CLIENT_PORT = 1337;
 int OUR_PORTNR;
 string OUR_IP;
 bool VERBOSE = true;
@@ -50,10 +54,14 @@ public:
     string group_id;
     string ip_address;
     int portnr;
+    bool welcomed;
+    chrono::high_resolution_clock::time_point connected_time;        
 
     Botnet_server(int socket)
     {
         this->sock = socket;
+        welcomed = false;
+        connected_time = chrono::high_resolution_clock::now();
     }
 
     Botnet_server(int socket, string group_id, string ip_address, int portnr)
@@ -62,6 +70,8 @@ public:
         this->group_id = group_id;
         this->portnr = portnr;
         this->ip_address = ip_address;
+        welcomed = false;
+        connected_time = chrono::high_resolution_clock::now();
     }
 
     string to_string()
@@ -154,8 +164,8 @@ bool in_mailbox(string group_id)
 
 string reconstruct_message_from_vector(const vector<string> &container, int start_index)
 {
-    string return_str = "";
-    for (unsigned int i = start_index; i < container.size(); i++)
+    string return_str = container[start_index];
+    for (unsigned int i = start_index + 1; i < container.size(); i++)
     {
         return_str += "," + container[i];
     }
@@ -193,17 +203,61 @@ string get_timestamp()
     time_t now = time(0);
     string time_string(ctime(&now));
     time_string.pop_back();
-    return time_string;
+    return time_string.substr(4, 15);
 }
 
-void log_incoming(string message)
+void initialize_log_file()
 {
-    cout << get_timestamp() << " INCOMING    << " << message << endl;
+    ifstream f(LOGFILE);
+    if (!f.good())
+    {
+        string top_header = "TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE";
+        string sub_header = "-------------------------------------------------------------------------";
+        ofstream outfile(LOGFILE);
+        outfile << top_header << endl;
+        outfile << sub_header << endl;
+        outfile.close();
+    }
 }
 
-void log_outgoing(string message)
+void append_to_log_file(string message)
 {
-    cout << get_timestamp() << " OUTGOING    >> " << message << endl;
+    ofstream outfile(LOGFILE, ios_base::app);
+    outfile << message << endl;
+    outfile.close();
+}
+
+string make_log_string(const int source_socket, string message, int out)
+{
+
+    string rtn = get_timestamp() + "  ";
+    if (out)
+    {
+        rtn = rtn + "TO    >>";
+    }
+    else
+    {
+        rtn = rtn + "FROM  <<";
+    }
+    // if the socket corresponds to a botnet_server
+    if (botnet_servers.count(source_socket))
+    {
+        Botnet_server *sender = botnet_servers[source_socket];
+        rtn = rtn + "  " + sender->group_id + "  " + sender->ip_address + "     " + to_string(sender->portnr) + "    " + message;
+    }
+    else
+    {
+        rtn = rtn + "  " + "CLIENT     " + "  " + CLIENT_IP + "     " + to_string(CLIENT_PORT) + "    " + message;
+    }
+
+    return rtn;
+}
+
+void log_incoming(const int source_socket, string message)
+{
+    string log_string = make_log_string(source_socket, message, 0);
+    cout << log_string << endl;
+    append_to_log_file(log_string);
 }
 
 /*
@@ -217,7 +271,9 @@ int send_and_log(const int communicationSocket, const Message message)
         cout << "Sending '" + message.to_string() + "' failed" << endl;
         return -1;
     }
-    log_outgoing(message.to_string());
+    string log_string = make_log_string(communicationSocket, message.to_string(), 1);
+    cout << log_string << endl;
+    append_to_log_file(log_string);
     return 0;
 }
 
@@ -303,8 +359,14 @@ void wait_for_client_connection(int listeningSocket, int &clientSocket, int &max
 
     maxfds = max(maxfds, clientSocket);
     FD_SET(clientSocket, &open_sockets);
+    struct sockaddr_in *client_info = (struct sockaddr_in *)&client_addr;
+    CLIENT_PORT = client_info->sin_port;
+    char temp_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_info->sin_addr), temp_ip, INET_ADDRSTRLEN);
+    CLIENT_IP = temp_ip;
 
-    cout << "client connected successfully on socket: " << to_string(clientSocket) << endl;
+    if_verbose("-- client connected successfully on socket: " + to_string(clientSocket) + " --");
+    if_verbose("-- client ip: " + CLIENT_IP + " client port: " + to_string(CLIENT_PORT) + " --");
     if_verbose("-- maxfds is: " + to_string(maxfds) + " --");
 }
 
@@ -477,18 +539,6 @@ void send_messages_from_mailbox(int socketfd)
     }
 }
 
-int send_welcome_message(int socket, string to_group_id)
-{
-    // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
-    Message message = Message();
-    message.type = "SEND_MSG";
-    message.arguments.push_back(OUR_GROUP_ID);   // from group id
-    message.arguments.push_back(to_group_id);    // to group id
-    message.arguments.push_back("hello friend"); // message content
-
-    return send_and_log(socket, message);
-}
-
 /*
 * STATUSREQ,<FROM_GROUP>
 */
@@ -553,17 +603,21 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
 // Close a botnet server's connection, remove it from the botnet_server list, and
 // tidy up select sockets afterwards.
 
-void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, int &maxfds)
+void close_socket(int socket, fd_set &open_sockets, int &maxfds)
 {
-    delete botnet_servers[botnet_server_sock];
-    // Remove server from the botnet server list
-    botnet_servers.erase(botnet_server_sock);
+    // are we closing a server socket?
+    if (botnet_servers.count(socket))
+    {
+        delete botnet_servers[socket];
+        // Remove server from the botnet server list
+        botnet_servers.erase(socket);
+    }
 
-    // If this botnet-server's socket is maxfds then the next lowest
+    // If this server's socket is maxfds then the next lowest
     // one has to be determined. Socket fd's can be reused by the Kernel,
     // so there aren't any nice ways to do this.
 
-    if (maxfds == botnet_server_sock)
+    if (maxfds == socket)
     {
         for (auto const &p : botnet_servers)
         {
@@ -572,8 +626,8 @@ void close_botnet_server(int botnet_server_sock, fd_set &open_sockets, int &maxf
     }
 
     // And remove from the list of open sockets.
-    FD_CLR(botnet_server_sock, &open_sockets);
-    close(botnet_server_sock);
+    FD_CLR(socket, &open_sockets);
+    close(socket);
 }
 
 /*
@@ -586,6 +640,49 @@ string get_message_type(string message)
     getline(ss, type, ',');
 
     return type;
+}
+
+void disconnect_oldest(fd_set &open_sockets, int &maxfds){
+    
+    // always keep some
+    if(botnet_servers.size() < 2){
+        if_verbose("-- Too few connected to disconnect --");
+        return;
+    }
+    long longest_duration = 0;
+    int socket_for_disconnection = -1;
+    for (auto const &pair : botnet_servers)
+    {
+        auto now = chrono::high_resolution_clock::now();
+        auto time_elapsed = chrono::duration_cast<chrono::seconds>(now - pair.second->connected_time);
+        if(time_elapsed.count() > longest_duration){
+            longest_duration = time_elapsed.count();
+            socket_for_disconnection = pair.second->sock;
+        }
+    }
+    if_verbose("-- disconnecting oldest --");
+    close_socket(socket_for_disconnection, open_sockets, maxfds);
+}
+/**
+ * Sends a welcome message to all not-yet-welcomed newcomers
+ */
+void welcome_newcomers()
+{
+    for (auto const &pair : botnet_servers)
+    {
+        if (!pair.second->welcomed)
+        {
+            if_verbose("-- Welcoming a newcomer --");
+            // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
+            Message message = Message();
+            message.type = "SEND_MSG";
+            message.arguments.push_back(OUR_GROUP_ID);                   // from group id
+            message.arguments.push_back(pair.second->group_id);          // to group id
+            message.arguments.push_back("Welcome to the party server!"); // message content
+            send_and_log(pair.second->sock, message);
+            pair.second->welcomed = true;
+        }
+    }
 }
 
 /**
@@ -715,9 +812,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
     if (byteCount == 0)
     {
         printf("Botnet server closed connection: %d", botnet_server->sock);
-        close(botnet_server->sock);
-
-        close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+        close_socket(botnet_server->sock, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -750,7 +845,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
         {
             string incoming_string = incoming_strings[i];
 
-            log_incoming(incoming_string);
+            log_incoming(botnet_server->sock, incoming_string);
 
             // TODO: simplify with command class
             Message incoming_message(incoming_string);
@@ -767,7 +862,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 {
                     botnet_server->group_id = servers[0].group_id;
                 }
-                send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
                 // TODO: ehv automation hér mögulega
             }
@@ -841,7 +935,7 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
             // TODO: untested
             else if (incoming_message.type == "LEAVE")
             {
-                close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+                close_socket(botnet_server->sock, open_sockets, maxfds);
             }
             // TODO: untested
             else if (incoming_message.type == "STATUSREQ")
@@ -883,9 +977,8 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
     int byteCount = recv(clientSocket, buffer, sizeof(buffer), MSG_DONTWAIT);
     if (byteCount == 0)
     {
-        printf("Client closed connection: %d", clientSocket);
-        close(clientSocket);
-        clientSocket = -1;
+        if_verbose("-- Client closed connection: " + to_string(clientSocket) + " --");
+        close_socket(clientSocket, open_sockets, maxfds);
     }
     // We don't check for -1 (nothing received) because select()
     // only triggers if there is something on the socket for us.
@@ -894,7 +987,7 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
         buffer[byteCount + 1] = '\0';
         Message message = Message(string(buffer));
 
-        log_incoming(message.to_string());
+        log_incoming(clientSocket, message.to_string());
         //  TODO: handle if we already have 5 connections
         if (message.type == "CONNECTTO")
         {
@@ -991,10 +1084,11 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             int communicationSocket = get_socket_from_id(group_id);
             if (communicationSocket != -1)
             {
-                if_verbose("-- sending custom command to server --");
+
                 string server_command = reconstruct_message_from_vector(message.arguments, 1);
                 Message new_message = Message(server_command);
-
+                if_verbose("-- sending following custom command to server --");
+                if_verbose(server_command);
                 send_and_log(communicationSocket, new_message);
             }
             else
@@ -1044,7 +1138,7 @@ void send_keep_alive_messages(fd_set &open_sockets, int &maxfds)
         {
             string error("-- Keepalive message to " + botnet_server->group_id + " failed. Disconnecting them --");
             if_verbose(error);
-            close_botnet_server(botnet_server->sock, open_sockets, maxfds);
+            close_socket(botnet_server->sock, open_sockets, maxfds);
         }
         else
         {
@@ -1058,11 +1152,12 @@ int main(int argc, char *argv[])
     int listenSocket;                 // Socket for connections to server
     int clientSock;                   // Socket of connecting client
     fd_set open_sockets;              // Current open sockets
-    fd_set read_sockets;              // Exception socket list
+    fd_set read_sockets;              // Temp socket list for select
     fd_set except_sockets;            // Exception socket list
     int maxfds;                       // Passed to select() as max fd in set
     struct timeval keepalive_timeout; // Time between keepalives
     OUR_IP = get_local_address();
+    initialize_log_file();
     if (argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
@@ -1104,9 +1199,14 @@ int main(int argc, char *argv[])
 
     while (true)
     {
+        welcome_newcomers();
+
+        disconnect_oldest(open_sockets, maxfds);
+
         if_verbose("-- open sockets: " + fd_set_to_string(open_sockets, maxfds) + " --");
         // Get modifiable copy of readSockets
-        read_sockets = except_sockets = open_sockets;
+        read_sockets = open_sockets;
+        FD_ZERO(&except_sockets);
 
         if_verbose("-- read sockets before select: " + fd_set_to_string(read_sockets, maxfds) + " --");
 
@@ -1121,6 +1221,7 @@ int main(int argc, char *argv[])
         if (n < 0)
         {
             perror("select failed - closing down\n");
+            fd_set_to_string(except_sockets, maxfds);
             break;
         }
         else if (n == 0)
