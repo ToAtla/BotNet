@@ -192,7 +192,7 @@ string get_timestamp()
     time_t now = time(0);
     string time_string(ctime(&now));
     time_string.pop_back();
-    return time_string.substr(4, 20);
+    return time_string.substr(4, 15);
 }
 
 void initialize_log_file()
@@ -211,20 +211,20 @@ void initialize_log_file()
 
 void append_to_log_file(string message)
 {
-    ofstream outfile(FILENAME);
+    ofstream outfile(FILENAME, ios_base::app);
     outfile << message << endl;
     outfile.close();
 }
 
 void log_incoming(string id, string ip, int port, string message)
 {
-    string log_string = get_timestamp() + id + ip + to_string(port) + " INCOMING    << " + message;
+    string log_string = get_timestamp() + "  " + id + "  " + ip + "  " + to_string(port) + " INCOMING    << " + message;
     cout << log_string << endl;
     append_to_log_file(log_string);
 }
 
 /*
-*   Sends a message through the given socket
+*   Sends a message through the given socket to a server
 *   Logs the messages to the servers terminal
 */
 int send_and_log(const int communicationSocket, const Message message)
@@ -234,12 +234,19 @@ int send_and_log(const int communicationSocket, const Message message)
         cout << "Sending '" + message.to_string() + "' failed" << endl;
         return -1;
     }
+    
     Botnet_server *sender = botnet_servers[communicationSocket];
-    string log_string = get_timestamp() + sender->group_id + sender->ip_address + to_string(sender->portnr) + " OUTGOING    >> " + message.to_string();
+    string log_string = get_timestamp();
+    if(sender == NULL){
+        log_string = log_string + "  " + "CLIENT" + "  " + CLIENT_IP + "  " + to_string(CLIENT_PORT) + " OUTGOING    >> " + message.to_string();
+    }else{
+        log_string = get_timestamp() + "  " + sender->group_id + "  " + sender->ip_address + "  " + to_string(sender->portnr) + " OUTGOING    >> " + message.to_string();
+    }
     cout << log_string << endl;
     append_to_log_file(log_string);
     return 0;
 }
+
 
 /*
 *   Sets up a listening socket to listen to client and server messages
