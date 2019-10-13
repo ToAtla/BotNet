@@ -798,48 +798,36 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
 
                 if (in_mailbox(to_group_id))
                 {
-                    int message_count = mail_box[to_group_id].size();
-                    pair<string, string> message_pair = mail_box[to_group_id][message_count - 1]; // newest message
+                    vector<pair<string, string>> messages = mail_box[to_group_id];
 
-                    // construct command to send and then for each message send to server.
-                    Message outgoing_message = Message();
-                    outgoing_message.type = "SEND_MSG";
+                    for (unsigned int i = 0; i < messages.size(); i++)
+                    {
+                        // construct command to send and then for each message send to server.
+                        Message outgoing_message = Message();
+                        outgoing_message.type = "SEND_MSG";
+                        outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
+                        outgoing_message.arguments.push_back(to_group_id);        // who the message is for
+                        outgoing_message.arguments.push_back(messages[i].second); // message
 
-                    outgoing_message.arguments.push_back(message_pair.first);  // who the message is from
-                    outgoing_message.arguments.push_back(to_group_id);         // who the message is for
-                    outgoing_message.arguments.push_back(message_pair.second); // message
+                        send_and_log(botnet_server->sock, outgoing_message);
 
-                    send_and_log(botnet_server->sock, outgoing_message);
+                        if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
 
-                    if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
+                        // give server time to breathe
+                        sleep(500);
+                    }
 
-                    // if we are sending the message to its rightful server then remove message
+                    // if we are sending the messages to its rightful server then remove message
                     // and if all messages are gone then remove from the mail_box
                     if (get_socket_from_id(to_group_id) == botnet_server->sock)
                     {
-                        mail_box[to_group_id].pop_back();
-                        if (mail_box[to_group_id].size() == 0)
-                        {
-                            mail_box.erase(to_group_id);
-                        }
+                        mail_box.erase(to_group_id);
                     }
                 }
                 else
                 {
                     if_verbose("-- no messages for this group_id --");
                 }
-
-                // TODO: multiple message problem
-                /*for (unsigned int i = 0; i < messages.size(); i++)
-            {
-                outgoing_message.arguments.push_back(messages[i].first);  // who the message is from
-                outgoing_message.arguments.push_back(to_group_id);        // who the message is for
-                outgoing_message.arguments.push_back(messages[i].second); // message
-
-                send_and_log(botnet_server->sock, outgoing_message);
-
-                if_verbose("-- sending GET_MSG: " + outgoing_message.to_string() + "--");
-            }*/
             }
             else if (incoming_message.type == "KEEPALIVE")
             {
