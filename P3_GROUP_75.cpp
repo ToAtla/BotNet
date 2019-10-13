@@ -433,6 +433,7 @@ string get_parallel_server()
 */
 void servers_response_to_vector(string servers_response, vector<Botnet_server> &servers)
 {
+    if_verbose("-- inside servers_response_to_vector --");
     // first remove "SERVERS" from string
     servers_response = servers_response.substr(8);
 
@@ -446,8 +447,16 @@ void servers_response_to_vector(string servers_response, vector<Botnet_server> &
 
         if (server_parts.size() == 3)
         {
-            Botnet_server server = Botnet_server(-1, server_parts[0], server_parts[1], stoi(server_parts[2]));
-            servers.push_back(server);
+            try
+            {
+                if_verbose("--  serverparts: " + server_parts[0] + " - " + server_parts[1] + " - " + server_parts[2] + " --");
+                Botnet_server server = Botnet_server(-1, server_parts[0], server_parts[1], stoi(server_parts[2]));
+                servers.push_back(server);
+            }
+            catch (int e)
+            {
+                if_verbose("-- error caught --");
+            }
         }
     }
 }
