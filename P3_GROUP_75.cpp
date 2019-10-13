@@ -474,6 +474,19 @@ void send_list_servers_cmd(int socketfd)
 }
 
 /*
+* STATUSREQ,<FROM_GROUP>
+*/
+int send_status_request(int socket)
+{
+    if_verbose("-- inside send_status_request --");
+    Message message = Message();
+    message.type = "STATUSREQ";
+    message.arguments.push_back(OUR_GROUP_ID);
+
+    return send_and_log(socket, message);
+}
+
+/*
 * connects to server and returns socket file descriptor
 * incrament botner-server connection count
 */
@@ -554,21 +567,6 @@ void send_messages_from_mailbox(int socketfd)
         mail_box.erase(message_owner);
     }
 }
-
-/*
-* STATUSREQ,<FROM_GROUP>
-*/
-int send_status_request(int socket)
-{
-    if_verbose("-- inside send_status_request --");
-    Message message = Message();
-    message.type = "STATUSREQ";
-    message.arguments.push_back(OUR_GROUP_ID);
-
-    return send_and_log(socket, message);
-}
-
-
 
 /*
 * Accepts incoming connection.
