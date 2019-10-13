@@ -26,6 +26,7 @@
 #include <map>
 #include <chrono>
 #include <utility> // std::pair
+#include <thread>
 
 using namespace std;
 
@@ -120,6 +121,11 @@ void if_verbose(string text)
         cout << text << endl
              << endl;
     }
+}
+
+void sleep(int milliseconds)
+{
+    this_thread::sleep_for(chrono::milliseconds(milliseconds));
 }
 
 /*
@@ -472,6 +478,18 @@ void send_messages_from_mailbox(int socketfd, map<int, Botnet_server *> &botnet_
     send_and_log(socketfd, message);
 }
 
+int send_welcome_message(int socket, string to_group_id)
+{
+    // construct SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content>
+    Message message = Message();
+    message.type = "SEND_MSG";
+    message.arguments.push_back(OUR_GROUP_ID);   // from group id
+    message.arguments.push_back(to_group_id);    // to group id
+    message.arguments.push_back("hello friend"); // message content
+
+    return send_and_log(socket, message);
+}
+
 /*
 * Accepts incoming connection.
 * Adds socket to botnet_server map
@@ -689,6 +707,14 @@ void deal_with_server_command(map<int, Botnet_server *> &botnet_servers, Botnet_
         for (unsigned int i = 0; i < incoming_strings.size(); i++)
         {
             string incoming_string = incoming_strings[i];
+
+            //update the the values int the botnet list, this is mostly for the group_id.
+            if (botnet_server->group_id == STANDIN_GROUPID)
+            {
+                botnet_server->group_id = servers[0].group_id;
+            }
+
+            send_welcome_message(botnet_server->sock, botnet_server->group_id);
 
             log_incoming(incoming_string);
 
