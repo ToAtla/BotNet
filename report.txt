@@ -1,0 +1,114 @@
+TSAM Project 3
+14.10.19
+
+Þórður Atlason          thorduratl17@ru.is
+Þórður Friðriksson      thordurf17@ru.is
+
+Time taken in total: 90 hours
+
+Submission overview:
+/wireshark                      Wireshark screenshots for each command
+logfile_paperspace.txt          logfile for our server, when it ran in the Dutch cloud
+logfile_skel.txt                logfile for our server, when it ran on skel
+combined_logfile.txt            both log files concatenated together
+/code                           server, client, makefile, readme
+
+
+Log of messages received from 10 unique groups:
+
+TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE
+-------------------------------------------------------------------------
+Oct 13 13:05:14  FROM  <<  P3_GROUP_14  157.157.192.206     41439    SEND_MSG,P3_GROUP_14,P3_GROUP_75,First contact?
+Oct 13 13:24:14  FROM  <<  P3_GROUP_96  130.208.243.61     57518    SEND_MSG,P3_GROUP_96,P3_GROUP_75,hihi
+Oct 13 14:30:17  FROM  <<  P3_GROUP_21  130.208.243.61     4053    SEND_MSG,P3_GROUP_21,P3_GROUP_75,Group 21 loves to party in downtown Ak
+Oct 13 15:37:54  FROM  <<  P3_GROUP_27  130.208.243.61     41668    SEND_MSG,P3_GROUP_27,P3_GROUP_75,This is an autosent message, It does not subsitute human contact
+Oct 13 16:26:29  FROM  <<  P3_GROUP_17  130.208.243.61     4007    SEND_MSG,P3_GROUP_17,P3_GROUP_75,Halló frá Heiðrúnu og Hrefnu í GROUP_17
+Oct 13 16:48:13  FROM  <<  P3_GROUP_69  130.208.243.61     4819    SEND_MSG,P3_GROUP_69,,Hello please respond to me
+Oct 13 17:00:06  FROM  <<  P3_GROUP_29  130.208.243.61     54487    SEND_MSG,P3_GROUP_29,P3_GROUP_75,hello can I get a message
+Oct 13 17:09:22  FROM  <<  P3_GROUP_40  139.162.232.7     3742    SEND_MSG,P3_GROUP_40,P3_GROUP_75,Thankyou!
+Oct 13 17:26:25  FROM  <<  P3_GROUP_32  130.208.240.8     57744    SEND_MSG,P3_GROUP_32,Hei 
+Oct 13 17:39:38  FROM  <<  P3_GROUP_53  130.208.240.8     32997    SEND_MSG,P3_GROUP_53,P3_GROUP_75,hey
+
+Log of messages sent to 10 unique groups:
+
+TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE
+-------------------------------------------------------------------------
+Oct 13 13:16:53  TO    >>  P3_GROUP_14  157.157.192.206     22496    SEND_MSG,P3_GROUP_75,P3_GROUP_14,Welcome to the party server!
+Oct 13 13:23:53  TO    >>  P3_GROUP_96  130.208.243.61     57518    SEND_MSG,P3_GROUP_75,P3_GROUP_96,Welcome to the party server!
+Oct 13 13:42:25  TO    >>  P3_GROUP_77  167.71.136.174     28315    SEND_MSG,P3_GROUP_75,P3_GROUP_77,Welcome to the party server!
+Oct 13 14:08:05  TO    >>  P3_GROUP_55  130.208.243.61     4012    SEND_MSG,P3_GROUP_75,P3_GROUP_55,Welcome to the party server!
+Oct 13 14:10:53  TO    >>  P3_GROUP_52  130.208.243.61     4040    SEND_MSG,P3_GROUP_75,P3_GROUP_52,Welcome to the party server!
+Oct 13 14:15:40  TO    >>  P3_GROUP_27  130.208.243.61     4094    SEND_MSG,P3_GROUP_75,P3_GROUP_27,Welcome to the party server!
+Oct 13 14:28:27  TO    >>  P3_GROUP_21  130.208.243.61     4053    SEND_MSG,P3_GROUP_75,P3_GROUP_21,Welcome to the party server!
+Oct 13 14:30:36  TO    >>  P3_GROUP_7  46.239.210.182     1861    SEND_MSG,P3_GROUP_75,P3_GROUP_7,Welcome to the party server!
+Oct 13 14:32:39  TO    >>  V_GROUP_47  130.208.243.61     4096    SEND_MSG,P3_GROUP_75,V_GROUP_47,Welcome to the party server!
+Oct 13 14:43:00  TO    >>  P3_GROUP_52  130.208.243.61     35004    SEND_MSG,P3_GROUP_75,P3_GROUP_52,Welcome to the party server!
+
+
+
+
+
+Extra credit for connectivity
+We recieved the following messages from 22 unique groups in total
+
+TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE
+-------------------------------------------------------------------------
+Oct 13 13:05:14  FROM  <<  P3_GROUP_14  157.157.192.206     41439    SEND_MSG,P3_GROUP_14,P3_GROUP_75,First contact?
+Oct 13 13:24:14  FROM  <<  P3_GROUP_96  130.208.243.61     57518    SEND_MSG,P3_GROUP_96,P3_GROUP_75,hihi
+Oct 13 14:30:17  FROM  <<  P3_GROUP_21  130.208.243.61     4053    SEND_MSG,P3_GROUP_21,P3_GROUP_75,Group 21 loves to party in downtown Ak
+Oct 13 15:37:54  FROM  <<  P3_GROUP_27  130.208.243.61     41668    SEND_MSG,P3_GROUP_27,P3_GROUP_75,This is an autosent message, It does not subsitute human contact
+Oct 13 16:26:29  FROM  <<  P3_GROUP_17  130.208.243.61     4007    SEND_MSG,P3_GROUP_17,P3_GROUP_75,Halló frá Heiðrúnu og Hrefnu í GROUP_17
+Oct 13 16:48:13  FROM  <<  P3_GROUP_69  130.208.243.61     4819    SEND_MSG,P3_GROUP_69,,Hello please respond to me
+Oct 13 17:00:06  FROM  <<  P3_GROUP_29  130.208.243.61     54487    SEND_MSG,P3_GROUP_29,P3_GROUP_75,hello can I get a message
+Oct 13 17:09:22  FROM  <<  P3_GROUP_40  139.162.232.7     3742    SEND_MSG,P3_GROUP_40,P3_GROUP_75,Thankyou!
+Oct 13 17:26:25  FROM  <<  P3_GROUP_32  130.208.240.8     57744    SEND_MSG,P3_GROUP_32,Hei 
+Oct 13 17:39:38  FROM  <<  P3_GROUP_53  130.208.240.8     32997    SEND_MSG,P3_GROUP_53,P3_GROUP_75,hey
+Oct 13 17:48:03  FROM  <<  P3_GROUP_9  130.208.243.61     36574    SEND_MSG,P3_GROUP_9,P3_GROUP_75,HEY
+Oct 13 17:53:09  FROM  <<  P3_GROUP_21  130.208.243.61     7391    SEND_MSG,P3_GROUP_21,P3_GROUP_75,Bestu kveðjur frá group 21 á Ak til group 75. Svona ef þu varst 
+Oct 13 18:07:30  FROM  <<  P3_GROUP_37  89.160.140.33     13522    SEND_MSG,P3_GROUP_37,AKGROUP,Hello Group 75
+Oct 13 18:12:50  FROM  <<  P3_GROUP_28  46.239.216.11     1759    SEND_MSG,P3_GROUP_28,P3_GROUP_75,Dark and difficult times lie ahead. Soon we must all face the choice between what is right and what is easy
+Oct 13 18:39:22  FROM  <<  P3_GROUP_24  130.208.243.61     19173    SEND_MSG,P3_GROUP_24,P3_GROUP_52,MSGFARM
+Oct 13 18:48:10  FROM  <<  P3_GROUP_86  130.208.243.61     37606    SEND_MSG,P3_GROUP_86,P3_GROUP_75,eat - sleep - segfault - repeat
+Oct 13 19:05:51  FROM  <<  P3_GROUP_19  157.97.3.124     60033    SEND_MSG,P3_GROUP_19,P3_GROUP_75,please send back
+Oct 13 19:20:42  FROM  <<  P3_GROUP_46  194.144.178.101     32940    SEND_MSG,P3_GROUP_46,P3_GROUP_75,hello
+Oct 13 16:36:52  FROM  <<  P3_GROUP_69  127.0.0.1     2177    SEND_MSG,P3_GROUP_69,P3_GROUP_75,Hello is anyone there? 
+Oct 13 16:47:37  FROM  <<  P3_GROUP_8  130.208.243.61     37024    SEND_MSG,P3_GROUP_8,P3_GROUP_75,Hello there! :)
+Oct 13 16:58:45  FROM  <<  P3_GROUP_25  130.208.243.61     4025    SEND_MSG,P3_GROUP_25,P3_GROUP_75,Say Hebbo!...
+Oct 14 01:09:14  FROM  <<  P3_GROUP_13  130.208.243.61     39661    SEND_MSG,P3_GROUP_74,P3_GROUP_13,heei bois send us a message plz
+
+
+
+Oracle
+--------
+An exerpt of our communication with the ORACLE:
+
+TIME             TO/FROM   GROUP_ID     IP ADDRESS         PORT    MESSAGE
+-------------------------------------------------------------------------
+Oct 13 11:03:22  FROM  <<  Instructor_1  130.208.243.61     4043    SEND_MSG,ORACLE,P3_GROUP_75,
+
+"The goal of science and engineering is to build better mousetraps. The goal of nature is to 
+ build better mice."
+ Anonymous 
+
+...
+...
+
+Oct 13 14:05:32  TO    >>  UNKOWNGROUP  130.208.243.61     4015    LISTSERVERS,P3_GROUP_75
+Oct 13 14:05:32  FROM  <<  UNKOWNGROUP  130.208.243.61     4015    LISTSERVERS,ORACLE
+Oct 13 14:05:32  TO    >>  ORACLE  130.208.243.61     4015    SEND_MSG,P3_GROUP_75,ORACLE,Welcome to the party server!
+Oct 13 14:05:32  TO    >>  ORACLE  130.208.243.61     4015    SERVERS,P3_GROUP_75,10.64.39.149,4040;ORACLE,130.208.243.61,4015;
+Oct 13 14:05:32  FROM  <<  ORACLE  130.208.243.61     4015    SERVERS,ORACLE,130.208.243.61,4015;ORACLE,130.208.243.61,4015;ORACLE,130.208.243.61,4015;P3_GROUP_36,130.208.243.61,-1;P3_GROUP_75,172.83.9.61,-1;
+Oct 13 14:05:32  FROM  <<  ORACLE  130.208.243.61     4015    ORACLE,P3_GROUP_75,Wrong no. of parameters for command;
+
+...
+...
+
+Oct 13 13:56:10  TO    >>  ORACLE  130.208.243.61     4015    SEND_MSG,P3_GROUP_75,oh wise oracle show me your ways
+Oct 13 13:56:10  FROM  <<  ORACLE  130.208.243.61     4015    SEND_MSG,ORACLE,P3_GROUP_75,
+bc27bcc8b4ebb5835f61dceee4b1ed3e
+
+Hashed Message from Oracle:
+bc27bcc8b4ebb5835f61dceee4b1ed3e
+
+Decoded as:
+Whiffling

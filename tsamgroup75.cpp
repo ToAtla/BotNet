@@ -1,9 +1,11 @@
 //
-// BotNet server for Computer Networking
+// A BotNet server
 //
-// Command line: ./chat_server 4000
+// Command line: ./tsamgroup75 <port>
 //
 // Author: Þórður Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
+//
+// Computer Networking at RU Fall 2019
 //
 #include <stdio.h>
 #include <errno.h>
@@ -96,8 +98,6 @@ class Message
 public:
     string type;
     vector<string> arguments;
-    // TODO:    make the constructor robust and capable of
-    //          creating a message from a string containing SOH & EOT
     Message(string raw_message)
     {
         stringstream ss(raw_message);
@@ -423,29 +423,6 @@ void split(string &str, vector<string> &cont, char delim = ' ')
     }
 }
 
-/**
- * Gives the Client a way to display the running servers on the same machine
- * with ports starting with 4
- */
-string get_parallel_server()
-{
-
-    FILE *fp;
-    string command = "ps -aux | grep \\./ | grep ' 4'";
-    // Large arbitrary size chosen
-    char var[6000];
-
-    // Run a command and save the output to a string
-    fp = popen(command.c_str(), "r");
-    std::string output_string;
-    while (fgets(var, sizeof(var), fp) != NULL)
-    {
-        output_string = output_string + var;
-    }
-    pclose(fp);
-    return output_string;
-}
-
 /*
 * takes SERVERS,<groupid,ip,port>;<groupid,ip,port>; and converts to vector of Botnet_server objects
 */
@@ -485,8 +462,6 @@ void send_list_servers_cmd(int socketfd)
     Message message = Message();
     message.type = "LISTSERVERS";
     message.arguments.push_back(OUR_GROUP_ID);
-
-    // TODO: error handling
     send_and_log(socketfd, message);
 }
 
@@ -618,7 +593,6 @@ void new_connections(int listenSocket, int &maxfds, fd_set &open_sockets)
         // send statusreq to be able to retrieve messages from this server.
         send_status_request(server_socket);
 
-        // TODO: havent been able to test if the port and ip extraction worked
         char ip_address[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(server_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
         botnet_servers[server_socket] = new Botnet_server(server_socket, STANDIN_GROUPID, string(ip_address), server_addr.sin_port);
@@ -659,18 +633,6 @@ void close_socket(int socket, fd_set &open_sockets, int &maxfds)
     // And remove from the list of open sockets.
     FD_CLR(socket, &open_sockets);
     close(socket);
-}
-
-/*
-* extract the beginning of the message to see if it is for example LISTSERVERS or KEEPALIVE or 
-*/
-string get_message_type(string message)
-{
-    string type;
-    stringstream ss(message);
-    getline(ss, type, ',');
-
-    return type;
 }
 
 void disconnect_oldest(fd_set &open_sockets, int &maxfds)
@@ -893,7 +855,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
 
             log_incoming(botnet_server->sock, incoming_string);
 
-            // TODO: simplify with command class
             Message incoming_message(incoming_string);
 
             if (incoming_message.type == "SERVERS")
@@ -909,8 +870,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                     botnet_server->group_id = servers[0].group_id;
                     welcome_newcomers(botnet_server->sock);
                 }
-
-                // TODO: ehv automation hér mögulega
             }
             else if (incoming_message.type == "LISTSERVERS")
             {
@@ -922,7 +881,6 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                 Message server_list_answer(get_connected_servers());
                 send_and_log(botnet_server->sock, server_list_answer);
             }
-            //  TODO: untested
             else if (incoming_message.type == "SEND_MSG")
             {
                 if (incoming_message.arguments.size() > 3)
@@ -930,17 +888,17 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                     string from_group_id = incoming_message.arguments[0];                                    // group who message is from
                     string to_group_id = incoming_message.arguments[1];                                      // group who message is to
                     string message_content = reconstruct_message_from_vector(incoming_message.arguments, 2); // if there were commas in message then we need to reconstruct.
-                    if_verbose("-- Message recieved FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
+                    if_verbose("-- Message received FROM " + from_group_id + " TO " + to_group_id + " MSG: " + message_content + " --");
 
                     mail_box[to_group_id].push_back(pair<string, string>(from_group_id, message_content)); // add message to  mailbox
 
                     if_verbose("-- see if it got added to mailbox, size of mailbox: " + to_string(mail_box[to_group_id].size()) + ", first item: <" + mail_box[to_group_id][0].first + ", " + mail_box[to_group_id][0].second + "> --");
                 }
-                else {
-                    if_verbose("-- send_msg is on the wrong format --");
+                else
+                {
+                    if_verbose("-- send_msg is of the wrong format --");
                 }
             }
-            // TODO: untested
             else if (incoming_message.type == "GET_MSG")
             {
                 string to_group_id = incoming_message.arguments[0]; // id of the group whos message is for
@@ -998,12 +956,10 @@ void deal_with_server_command(Botnet_server *botnet_server, fd_set &open_sockets
                     if_verbose("-- keepalive error --");
                 }
             }
-            // TODO: untested
             else if (incoming_message.type == "LEAVE")
             {
                 close_socket(botnet_server->sock, open_sockets, maxfds);
             }
-            // TODO: untested
             else if (incoming_message.type == "STATUSREQ")
             {
                 string from_group = incoming_message.arguments[0];
@@ -1054,7 +1010,6 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
         Message message = Message(string(buffer));
 
         log_incoming(clientSocket, message.to_string());
-        //  TODO: handle if we already have 5 connections
         if (message.type == "CONNECTTO")
         {
             if_verbose("-- Received CONNECTTO command from client --");
@@ -1065,6 +1020,13 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             if (port == OUR_PORTNR && ip == OUR_IP)
             {
                 Message success("FAILIURE,We can't connect to ourselves");
+                send_and_log(clientSocket, success);
+                return;
+            }
+            // Capacity check
+            else if (botnet_servers.size() < MAXCONNECTEDSERVERS)
+            {
+                Message success("FAILIURE,We're at full capacity");
                 send_and_log(clientSocket, success);
                 return;
             }
@@ -1125,7 +1087,6 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             // if there  is mail for the the message owner
             if (in_mailbox(message_owner_id))
             {
-                // TODO: multiple message problem
                 outgoing_string = mail_box[message_owner_id][0].second;
             }
             else
@@ -1134,12 +1095,6 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
             }
             outgoing_message.arguments.push_back(outgoing_string);
             send_and_log(clientSocket, outgoing_message);
-        }
-        else if (message.type == "WHO")
-        {
-            if_verbose("-- Listing parallel servers for client --");
-            Message parallel_stuff(get_parallel_server());
-            send_and_log(clientSocket, parallel_stuff);
         }
         // expected format: CUSTOM,<GROUP_ID>,<server command>
         else if (message.type == "CUSTOM")
@@ -1166,7 +1121,7 @@ void deal_with_client_command(int &clientSocket, fd_set &open_sockets, int &maxf
         }
         else
         {
-            if_verbose("-- Non recognized client command recieved --");
+            if_verbose("-- Non recognized client command received --");
             Message error_msg("ERROR,Sorry I don't recognize that command");
             send_and_log(clientSocket, error_msg);
         }
@@ -1226,7 +1181,7 @@ int main(int argc, char *argv[])
     initialize_log_file();
     if (argc != 2)
     {
-        printf("Usage: chat_server <ip port>\n");
+        printf("Usage: ./tsamgroup75 <ip port>\n");
         exit(0);
     }
 

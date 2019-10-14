@@ -1,9 +1,11 @@
 //
-// BotNet client for Computer Networking
+// A BotNet client for Computer Networking
 //
 // Command line: ./client <server_ip> <server_port>
 //
 // Author: Þórður Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
+//
+// Computer Networking at RU Fall 2019
 //
 #include <sys/socket.h>
 #include <stdio.h>
