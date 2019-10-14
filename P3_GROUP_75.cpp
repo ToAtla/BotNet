@@ -696,6 +696,10 @@ void disconnect_oldest(fd_set &open_sockets, int &maxfds)
     }
     if (socket_for_disconnection != -1)
     {
+        Message leave_msg = Message();
+        leave_msg.type = "LEAVE";
+        leave_msg.arguments.push_back(OUR_IP);
+        leave_msg.arguments.push_back(to_string(OUR_PORTNR));
         if_verbose("-- disconnecting oldest --");
         close_socket(socket_for_disconnection, open_sockets, maxfds);
     }
