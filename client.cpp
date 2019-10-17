@@ -56,7 +56,6 @@ int main(int argc, char *argv[])
         return (-1);
     }
     string command = "";
-    cout << "Hint: Skel's ip is 130.208.243.61" << endl;
     do
     {
         cout << endl;
