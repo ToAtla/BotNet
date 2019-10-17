@@ -1,7 +1,7 @@
 //
 // A BotNet server
 //
-// Command line: ./tsamgroup75 <port>
+// Command line: ./server <port>
 //
 // Author: Þórður Atlason (thorduratl17@ru.is) and Þórður Friðriksson (thordurf17@ru.is)
 //
@@ -38,7 +38,7 @@ using namespace std;
 #define BUFFERSIZE 1025
 #define LOGFILE "logfile.txt"
 
-string OUR_GROUP_ID = "P3_GROUP_75";
+string OUR_GROUP_ID = "BotScott";
 string STANDIN_GROUPID = "UNKOWNGROUP";
 string CLIENT_IP = "111.222.333.444";
 int CLIENT_PORT = 1337;
@@ -1181,7 +1181,7 @@ int main(int argc, char *argv[])
     initialize_log_file();
     if (argc != 2)
     {
-        printf("Usage: ./tsamgroup75 <ip port>\n");
+        printf("Usage: ./server <ip port>\n");
         exit(0);
     }
 
